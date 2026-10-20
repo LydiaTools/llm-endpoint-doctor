@@ -21,6 +21,7 @@ class _State:
     redirect_to = ""
     redirect_status = 307
     redirected_authorization: str | None = None
+    reject_stream_options = False
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -57,11 +58,18 @@ class _Handler(BaseHTTPRequestHandler):
             "authorization": self.headers.get("Authorization"),
             "body": body,
         })
+        if body.get("stream_options") and _State.reject_stream_options:
+            self._send_json({"error": {"message": "unsupported stream options"}}, 400)
+            return
         if _State.status_code != 200:
             self._send_json({"error": {"message": "sensitive-provider-error-body"}}, _State.status_code)
             return
         if body.get("stream"):
-            stream = b'data: {"choices":[{"delta":{"content":"endpoint-ok"}}]}\n\ndata: [DONE]\n\n'
+            chunks = [b'data: {"choices":[{"delta":{"content":"endpoint-ok"}}]}\n\n']
+            if isinstance(body.get("stream_options"), dict) and body["stream_options"].get("include_usage"):
+                chunks.append(b'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n')
+            chunks.append(b"data: [DONE]\n\n")
+            stream = b"".join(chunks)
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Content-Length", str(len(stream)))
@@ -106,6 +114,7 @@ class CoreTests(unittest.TestCase):
         _State.redirect_to = ""
         _State.redirect_status = 307
         _State.redirected_authorization = None
+        _State.reject_stream_options = False
 
     def test_base_url_normalization_and_rejections(self) -> None:
         self.assertEqual(normalize_base_url(" https://api.example.com/v1/ "), "https://api.example.com/v1")
@@ -148,6 +157,21 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(statuses["model catalog"], "pass")
         self.assertEqual(statuses["streaming"], "pass")
         self.assertEqual(statuses["JSON mode"], "pass")
+
+    def test_stream_options_check_reports_usage_metadata(self) -> None:
+        report = run_diagnostics(self.base_url, "fixture-model", check_stream_options=True)
+        check = next(item for item in report.checks if item.name == "stream options")
+        self.assertEqual(check.status, "pass")
+        self.assertEqual(len(_State.requests), 2)
+        self.assertEqual(_State.requests[1]["body"]["stream_options"], {"include_usage": True})
+
+    def test_stream_options_rejection_is_reported_without_provider_body(self) -> None:
+        _State.reject_stream_options = True
+        report = run_diagnostics(self.base_url, "fixture-model", check_stream_options=True)
+        check = next(item for item in report.checks if item.name == "stream options")
+        self.assertEqual(check.status, "warn")
+        self.assertIn("HTTP 400", check.detail)
+        self.assertNotIn("unsupported stream options", json.dumps(report.to_dict()))
 
     def test_provider_error_body_is_not_in_report(self) -> None:
         _State.status_code = 401

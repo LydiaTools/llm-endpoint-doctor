@@ -64,7 +64,12 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             return
 
         if request.get("stream") is True:
-            self._send_stream()
+            stream_options = request.get("stream_options")
+            include_usage = (
+                isinstance(stream_options, dict)
+                and stream_options.get("include_usage") is True
+            )
+            self._send_stream(include_usage=include_usage)
             return
 
         response_format = request.get("response_format")
@@ -81,11 +86,12 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             }],
         })
 
-    def _send_stream(self) -> None:
-        body = (
-            'data: {"choices":[{"index":0,"delta":{"content":"endpoint-ok"}}]}\n\n'
-            "data: [DONE]\n\n"
-        ).encode("utf-8")
+    def _send_stream(self, *, include_usage: bool) -> None:
+        chunks = ['data: {"choices":[{"index":0,"delta":{"content":"endpoint-ok"}}]}\n\n']
+        if include_usage:
+            chunks.append('data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n')
+        chunks.append("data: [DONE]\n\n")
+        body = "".join(chunks).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")

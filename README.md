@@ -55,6 +55,7 @@ llm-doctor \
   --no-prompt \
   --check-model-list \
   --check-streaming \
+  --check-stream-options \
   --check-json-mode
 ```
 
@@ -62,6 +63,7 @@ llm-doctor \
 [PASS] model catalog — Exact model ID appears in the provider catalog.
 [PASS] chat completion — A non-empty chat response was returned.
 [PASS] streaming — Server sent an SSE completion marker.
+[PASS] stream options — SSE completed and included usage metadata when requested.
 [PASS] JSON mode — Returned a JSON object.
 
 Basic chat: READY
@@ -71,7 +73,7 @@ The fixture binds to loopback and returns fixed responses. It demonstrates the r
 
 ## Optional checks
 
-Each option adds a request. Streaming and JSON-mode checks each send one additional generation request.
+Each option adds a request. Streaming, stream-options, and JSON-mode checks each send one additional generation request.
 
 ```bash
 llm-doctor \
@@ -79,6 +81,7 @@ llm-doctor \
   --model your-model-id \
   --check-model-list \
   --check-streaming \
+  --check-stream-options \
   --check-json-mode \
   --json-report endpoint-report.json
 ```
@@ -111,6 +114,7 @@ If the named environment variable is missing or empty, the command stops before 
 - **Chat completion:** Sends one short test prompt to `/chat/completions` and verifies the response has text in the expected OpenAI chat format.
 - **Model catalog (optional):** Checks whether the exact model ID appears in `/models`. Some providers use aliases or incomplete catalogs, so a missing ID is a warning rather than a failed chat test.
 - **Streaming (optional):** Checks for a server-sent events completion marker.
+- **Stream options (optional):** Sends `stream_options: {"include_usage": true}` with a streaming request and checks whether usage metadata arrives. This can reveal endpoints that accept ordinary streaming but reject or ignore this client option.
 - **JSON mode (optional):** Requests a JSON object and checks that the returned content parses as an object.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
 

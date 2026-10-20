@@ -55,6 +55,7 @@ llm-doctor \
   --no-prompt \
   --check-model-list \
   --check-streaming \
+  --check-stream-options \
   --check-json-mode
 ```
 
@@ -62,6 +63,7 @@ llm-doctor \
 [PASS] model catalog — 找到完全匹配的模型 ID。
 [PASS] chat completion — 收到符合预期格式的非空回复。
 [PASS] streaming — 收到 SSE 完成标记。
+[PASS] stream options — 流式请求完成，并返回了请求的用量信息。
 [PASS] JSON mode — 返回了 JSON 对象。
 
 Basic chat: READY
@@ -71,7 +73,7 @@ Basic chat: READY
 
 ## 可选检查
 
-每个选项都会增加请求。流式和 JSON 模式分别额外发送一条生成请求。
+每个选项都会增加请求。流式、流式选项和 JSON 模式分别额外发送一条生成请求。
 
 ```bash
 llm-doctor \
@@ -79,6 +81,7 @@ llm-doctor \
   --model your-model-id \
   --check-model-list \
   --check-streaming \
+  --check-stream-options \
   --check-json-mode \
   --json-report endpoint-report.json
 ```
@@ -111,6 +114,7 @@ CI 中可以从环境变量读取 Key，避免把它放进命令行参数：
 - **普通对话：** 向 `/chat/completions` 发送一条短测试提示，确认返回符合 OpenAI Chat 格式的文本。
 - **模型列表（可选）：** 检查 `/models` 是否列出完全匹配的模型 ID。部分服务商使用别名或不完整目录，因此未列出只显示提醒，不直接判定对话失败。
 - **流式输出（可选）：** 检查是否收到 server-sent events 结束标记。
+- **流式选项（可选）：** 在流式请求中发送 `stream_options: {"include_usage": true}`，检查端点是否接受该参数并返回用量信息。普通流式可用但不兼容此客户端选项时，这项检查会给出提醒。
 - **JSON 模式（可选）：** 请求返回 JSON 对象，并检查内容能否解析为对象。
 - **常见故障：** 区分鉴权/权限错误、接口或模型不存在、速率限制、服务错误、超时和 TLS 错误，不输出服务商的原始错误正文。
 

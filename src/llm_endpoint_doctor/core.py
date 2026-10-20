@@ -269,8 +269,22 @@ def _request_stream(
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         text = ""
-    saw_done = any(line.strip() == "data: [DONE]" for line in text.splitlines())
-    return _Response(status_code, elapsed, payload={"saw_done": saw_done})
+    saw_done = False
+    saw_usage = False
+    for line in text.splitlines():
+        line = line.strip()
+        if line == "data: [DONE]":
+            saw_done = True
+            continue
+        if not line.startswith("data:"):
+            continue
+        try:
+            chunk = json.loads(line[5:].strip())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(chunk, dict) and isinstance(chunk.get("usage"), dict):
+            saw_usage = True
+    return _Response(status_code, elapsed, payload={"saw_done": saw_done, "saw_usage": saw_usage})
 
 
 def run_diagnostics(
@@ -281,6 +295,7 @@ def run_diagnostics(
     check_model_list: bool = False,
     check_streaming: bool = False,
     check_json_mode: bool = False,
+    check_stream_options: bool = False,
 ) -> DiagnosticReport:
     normalized = normalize_base_url(base_url)
     model = model.strip()
@@ -331,6 +346,20 @@ def run_diagnostics(
             checks.append(CheckResult("streaming", "warn", "HTTP succeeded, but no SSE completion marker was detected.", result.elapsed_ms))
         else:
             checks.append(CheckResult("streaming", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+
+    if check_stream_options:
+        body = _chat_body(model, stream=True)
+        body["stream_options"] = {"include_usage": True}
+        result = _request_stream(normalized, api_key, body, timeout)
+        complete = result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_done")
+        if complete and result.payload.get("saw_usage"):
+            checks.append(CheckResult("stream options", "pass", "SSE completed and included usage metadata when requested.", result.elapsed_ms))
+        elif complete:
+            checks.append(CheckResult("stream options", "warn", "SSE completed, but no usage metadata was returned despite include_usage.", result.elapsed_ms))
+        elif result.status_code is not None and 200 <= result.status_code < 300:
+            checks.append(CheckResult("stream options", "warn", "HTTP succeeded, but no SSE completion marker was detected.", result.elapsed_ms))
+        else:
+            checks.append(CheckResult("stream options", "warn", f"The include_usage streaming request did not complete. {_error_detail(result.status_code, result.transport_error)}", result.elapsed_ms))
 
     if check_json_mode:
         result = _request_json(

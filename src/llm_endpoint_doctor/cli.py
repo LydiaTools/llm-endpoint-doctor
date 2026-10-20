@@ -22,6 +22,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=20.0, help="Per-request timeout in seconds (default: 20)")
     parser.add_argument("--check-model-list", action="store_true", help="Also GET /models (one extra request)")
     parser.add_argument("--check-streaming", action="store_true", help="Also test SSE streaming (one extra generation)")
+    parser.add_argument("--check-stream-options", action="store_true", help="Also test stream_options.include_usage (one extra generation)")
     parser.add_argument("--check-json-mode", action="store_true", help="Also test JSON mode (one extra generation)")
     key_group = parser.add_mutually_exclusive_group()
     key_group.add_argument("--api-key-env", metavar="NAME", help="Read the API key from an environment variable")
@@ -79,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
             check_model_list=args.check_model_list,
             check_streaming=args.check_streaming,
             check_json_mode=args.check_json_mode,
+            check_stream_options=args.check_stream_options,
         )
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.", file=sys.stderr)
