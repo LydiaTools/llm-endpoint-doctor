@@ -71,6 +71,18 @@ Basic chat: READY
 
 The fixture binds to loopback and returns fixed responses. It demonstrates the request and report flow; it does not test an external provider. Stop it with `Ctrl+C`.
 
+## Chat works, but streamed tool calls fail?
+
+Replay a small protocol example before changing models. In a current source checkout, this command runs **six original offline controls**, with no key, server, model or package installation:
+
+```bash
+python3 examples/replay_tool_stream.py
+```
+
+It accepts call metadata sent only in the first delta and keeps interleaved arguments with the right call. It rejects missing complete-call identity, unfinished JSON and a turn ended by the output limit—even when that turn's argument JSON is valid. A labeled counterexample shows why requiring the name and ID in every delta rejects a valid stream.
+
+You can also inspect one local capture with `--file capture.sse`; output contains only acceptance, a fixed reason and the call count. No tool is executed. [Actual controls, output and bilingual troubleshooting guide](docs/tool-stream-replay.md). These examples are in current source; the fixed v0.2.0 release is unchanged. They do not add a live provider/tool-calling probe to `llm-doctor`.
+
 ## Optional checks
 
 Each option adds a request. Streaming, stream-options, and JSON-mode checks each send one additional generation request.

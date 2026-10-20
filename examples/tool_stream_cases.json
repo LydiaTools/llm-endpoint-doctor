@@ -1,0 +1,88 @@
+{
+  "synthetic": true,
+  "license": "MIT",
+  "origin": "Independently authored local examples; no captured provider traffic or upstream implementation",
+  "profile": "Single choice index0; at most8 function calls, JSON-object arguments, tool_calls finish and terminal DONE",
+  "cases": [
+    {
+      "name": "identity_only_in_first_delta",
+      "sse": "data: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_blue\",\"type\":\"function\",\"function\":{\"name\":\"choose_label\",\"arguments\":\"{\\\"label\\\":\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"blue\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+      "expected": {
+        "accepted": true,
+        "reason": "completed_tool_turn",
+        "call_count": 1
+      },
+      "expected_calls": [
+        {
+          "id": "call_blue",
+          "name": "choose_label",
+          "arguments": {
+            "label": "blue"
+          }
+        }
+      ]
+    },
+    {
+      "name": "interleaved_calls",
+      "sse": "data: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_blue\",\"type\":\"function\",\"function\":{\"name\":\"choose_label\",\"arguments\":\"{\\\"label\\\":\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_sum\",\"type\":\"function\",\"function\":{\"name\":\"sum_pair\",\"arguments\":\"{\\\"left\\\":2,\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"\\\"right\\\":3}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"blue\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+      "expected": {
+        "accepted": true,
+        "reason": "completed_tool_turn",
+        "call_count": 2
+      },
+      "expected_calls": [
+        {
+          "id": "call_blue",
+          "name": "choose_label",
+          "arguments": {
+            "label": "blue"
+          }
+        },
+        {
+          "id": "call_sum",
+          "name": "sum_pair",
+          "arguments": {
+            "left": 2,
+            "right": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "identity_never_arrives",
+      "sse": "data: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"label\\\":\\\"blue\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+      "expected": {
+        "accepted": false,
+        "reason": "incomplete_call_identity",
+        "call_count": 0
+      }
+    },
+    {
+      "name": "truncated_arguments_json",
+      "sse": "data: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_blue\",\"type\":\"function\",\"function\":{\"name\":\"choose_label\",\"arguments\":\"{\\\"label\\\":\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+      "expected": {
+        "accepted": false,
+        "reason": "invalid_arguments_json",
+        "call_count": 0
+      }
+    },
+    {
+      "name": "length_even_with_valid_json",
+      "sse": "data: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_blue\",\"type\":\"function\",\"function\":{\"name\":\"choose_label\",\"arguments\":\"{\\\"label\\\":\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"blue\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n",
+      "expected": {
+        "accepted": false,
+        "reason": "not_a_completed_tool_turn",
+        "call_count": 0
+      }
+    },
+    {
+      "name": "capture_without_done",
+      "sse": "data: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_blue\",\"type\":\"function\",\"function\":{\"name\":\"choose_label\",\"arguments\":\"{\\\"label\\\":\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"blue\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"original-synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+      "expected": {
+        "accepted": false,
+        "reason": "missing_done_marker",
+        "call_count": 0
+      }
+    }
+  ]
+}
