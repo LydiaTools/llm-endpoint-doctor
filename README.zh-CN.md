@@ -38,6 +38,37 @@ Basic chat: READY
 报告不包含 API Key、提示词或回复内容。
 ```
 
+## 不用服务商 Key 也能先试
+
+你可以先在本机跑完整流程，不用注册服务商，也不会向互联网发送请求。打开第二个终端，启动固定响应的模拟接口：
+
+```bash
+python3 examples/mock_openai_server.py
+```
+
+再运行体检命令：
+
+```bash
+llm-doctor \
+  --base-url http://127.0.0.1:8765/v1 \
+  --model demo-model \
+  --no-prompt \
+  --check-model-list \
+  --check-streaming \
+  --check-json-mode
+```
+
+```text
+[PASS] model catalog — 找到完全匹配的模型 ID。
+[PASS] chat completion — 收到符合预期格式的非空回复。
+[PASS] streaming — 收到 SSE 完成标记。
+[PASS] JSON mode — 返回了 JSON 对象。
+
+Basic chat: READY
+```
+
+模拟服务只监听本机回环地址并返回固定响应。它展示请求和报告流程，不代表已测试任何外部服务。按 `Ctrl+C` 停止。
+
 ## 可选检查
 
 每个选项都会增加请求。流式和 JSON 模式分别额外发送一条生成请求。

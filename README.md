@@ -38,6 +38,37 @@ Basic chat: READY
 No API key, prompt, or response content is included in the report.
 ```
 
+## Try it without a provider key
+
+You can see a complete local pass without signing up for a provider or sending a request over the internet. In a second terminal, start the deterministic mock endpoint:
+
+```bash
+python3 examples/mock_openai_server.py
+```
+
+Then run the doctor against it:
+
+```bash
+llm-doctor \
+  --base-url http://127.0.0.1:8765/v1 \
+  --model demo-model \
+  --no-prompt \
+  --check-model-list \
+  --check-streaming \
+  --check-json-mode
+```
+
+```text
+[PASS] model catalog — Exact model ID appears in the provider catalog.
+[PASS] chat completion — A non-empty chat response was returned.
+[PASS] streaming — Server sent an SSE completion marker.
+[PASS] JSON mode — Returned a JSON object.
+
+Basic chat: READY
+```
+
+The fixture binds to loopback and returns fixed responses. It demonstrates the request and report flow; it does not test an external provider. Stop it with `Ctrl+C`.
+
 ## Optional checks
 
 Each option adds a request. Streaming and JSON-mode checks each send one additional generation request.
