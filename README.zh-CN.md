@@ -1,0 +1,86 @@
+# LLM Endpoint Doctor｜大模型接口体检
+
+**把 OpenAI 兼容接口接进应用之前，先确认它能不能正常工作。**
+
+运行一条本地命令，检查 API 地址、模型 ID、鉴权和第一次对话响应。需要时再额外检查模型列表、流式输出和 JSON 模式。
+
+[English README](README.md) · [反馈问题](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
+
+## 为什么做这个工具
+
+“兼容 OpenAI”仍可能遇到地址填错、模型 ID 已下线、服务商有特殊鉴权方式，或普通对话可用但流式不支持。LLM Endpoint Doctor 让你先做一次小检查，再把这些问题带进自己的应用调试。
+
+它补充 API 资源目录：目录帮你找到接口，本工具检查你准备使用的接口。
+
+## 快速开始
+
+需要 Python 3.9 或更新版本，无第三方运行依赖。
+
+```bash
+git clone https://github.com/LydiaTools/llm-endpoint-doctor.git
+cd llm-endpoint-doctor
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install .
+llm-doctor --base-url https://api.example.com/v1 --model your-model-id
+```
+
+API Key 会通过隐藏输入提示读取。无 Key 接口直接回车。默认只发送 **一条**聊天补全请求。
+
+```text
+LLM Endpoint Doctor
+Target host: https://api.example.com
+Model: your-model-id
+
+[PASS] chat completion — 收到符合预期格式的非空回复。
+
+Basic chat: READY
+报告不包含 API Key、提示词或回复内容。
+```
+
+## 可选检查
+
+每个选项都会增加请求。流式和 JSON 模式分别额外发送一条生成请求。
+
+```bash
+llm-doctor \
+  --base-url https://api.example.com/v1 \
+  --model your-model-id \
+  --check-model-list \
+  --check-streaming \
+  --check-json-mode \
+  --json-report endpoint-report.json
+```
+
+只有目标文件不存在时才会创建 JSON 报告。报告包含目标主机、模型 ID、检查结果和耗时，不包含 API Key、URL 路径、提示词或回复内容。
+
+## 检查内容
+
+- **普通对话：** 向 `/chat/completions` 发送一条短测试提示，确认返回符合 OpenAI Chat 格式的文本。
+- **模型列表（可选）：** 检查 `/models` 是否列出完全匹配的模型 ID。部分服务商使用别名或不完整目录，因此未列出只显示提醒，不直接判定对话失败。
+- **流式输出（可选）：** 检查是否收到 server-sent events 结束标记。
+- **JSON 模式（可选）：** 请求返回 JSON 对象，并检查内容能否解析为对象。
+- **常见故障：** 区分鉴权/权限错误、接口或模型不存在、速率限制、服务错误、超时和 TLS 错误，不输出服务商的原始错误正文。
+
+工具不会自动重试，不评价回答质量、不做服务商跑分、不保证兼容每种客户端，也不能判断服务商的免费额度会长期不变。
+
+## 隐私与请求处理
+
+- API Key 通过隐藏输入读取，只放在发往你指定接口的 Authorization 请求头中；工具不会把它写入文件。
+- 工具没有遥测或账号系统。
+- 报告省略 API Key、URL 路径、提示词和回复正文。
+- 远程接口必须使用 HTTPS；只有 localhost 测试允许普通 HTTP。
+- 工具拒绝 URL 查询参数、内嵌凭据和跨域跳转，避免将 Key 转发给其他主机。
+- 接口服务商会收到测试请求，并可能按自己的规则计量。可选检查会增加请求次数，只在需要时启用。
+
+## 开发
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+测试使用本地模拟服务，不连接外部接口，也不使用真实 API Key。
+
+## 许可证
+
+MIT，详见 [LICENSE](LICENSE)。
