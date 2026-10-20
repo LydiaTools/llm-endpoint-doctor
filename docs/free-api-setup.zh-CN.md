@@ -16,6 +16,8 @@
 
 运行时在隐藏提示中输入该服务商的Key。本指南不注册账号、开启计费或添加付费回退。能否用免费档、当时有多少容量，以服务商和你的账号为准。
 
+启动 Agent 循环前，先[核对计费项目和请求次数](api-cost-preflight.zh-CN.md)。Gemini 已有带处理延迟的项目支出上限，与本工具每项检查的输出上限分别管理。
+
 ## Groq
 
 下面使用核对时Free Plan表中的模型ID，并采用[API文档](https://console.groq.com/docs/api-reference)说明的输出字段：

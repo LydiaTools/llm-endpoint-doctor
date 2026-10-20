@@ -16,6 +16,8 @@ Official documentation reviewed on **2026-10-21 (Asia/Shanghai)**. Provider reci
 
 You supply the provider's key through the hidden prompt. Nothing in this guide creates an account, enables billing or adds paid fallbacks. Free eligibility and capacity belong to the provider and your account, not to this tool.
 
+Before starting an agent loop, [check the billing project and request count](api-cost-preflight.md). Gemini now documents project spend caps with reporting delays; this is separate from the doctor's per-check output cap.
+
 ## Groq
 
 This example uses the model ID listed in Groq's current Free Plan table, and the output field documented in its [API reference](https://console.groq.com/docs/api-reference):

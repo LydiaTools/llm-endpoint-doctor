@@ -14,6 +14,8 @@
 
 **正在接入免费档模型？** [Groq、Gemini、OpenRouter 三家接入指南](docs/free-api-setup.zh-CN.md)列出正确地址、模型选择入口和可复制的单次检查。[English guide](docs/free-api-setup.md)。
 
+**准备启动 Agent 循环？** [先核对计费项目和请求次数](docs/api-cost-preflight.zh-CN.md)：包含 Gemini 当前支出上限入口、报表延迟，以及默认一条、全选五条请求的无需 Key 实测示例。
+
 ## 快速开始
 
 需要 Python 3.9 或更新版本，无第三方运行依赖。

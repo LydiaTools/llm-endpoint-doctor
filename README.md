@@ -14,6 +14,8 @@ It complements provider directories: directories help you find an endpoint; this
 
 **Connecting a free-tier model?** Start with [three provider recipes: Groq, Gemini and OpenRouter](docs/free-api-setup.md). Each includes the correct base URL, where to choose the model, and one copyable check. [中文接入指南](docs/free-api-setup.zh-CN.md).
 
+**Starting an agent loop?** [Check the billing project and count requests first](docs/api-cost-preflight.md): Gemini's current spend-cap path, its reporting delay, and a keyless example that observes one default request versus five with all checks.
+
 ## Quick start
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
