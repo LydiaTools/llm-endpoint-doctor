@@ -11,6 +11,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from . import __version__
+
 
 @dataclass
 class CheckResult:
@@ -36,7 +38,7 @@ class DiagnosticReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "tool": "llm-endpoint-doctor",
-            "version": "0.1.0",
+            "version": __version__,
             "target": self.target,
             "model": self.model,
             "chat_ready": self.chat_ready,

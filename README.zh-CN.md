@@ -54,6 +54,27 @@ llm-doctor \
 
 只有目标文件不存在时才会创建 JSON 报告。报告包含目标主机、模型 ID、检查结果和耗时，不包含 API Key、URL 路径、提示词或回复内容。
 
+## 非交互模式与 CI
+
+无 Key 接口可以显式跳过输入提示：
+
+```bash
+llm-doctor --base-url http://localhost:8000/v1 --model local-model --no-prompt
+```
+
+CI 中可以从环境变量读取 Key，避免把它放进命令行参数：
+
+```yaml
+- name: Check LLM endpoint
+  env:
+    LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+  run: >-
+    llm-doctor --base-url https://api.example.com/v1
+    --model your-model-id --api-key-env LLM_API_KEY
+```
+
+指定的环境变量缺失或为空时，命令会在发送请求前停止。
+
 ## 检查内容
 
 - **普通对话：** 向 `/chat/completions` 发送一条短测试提示，确认返回符合 OpenAI Chat 格式的文本。
@@ -66,7 +87,7 @@ llm-doctor \
 
 ## 隐私与请求处理
 
-- API Key 通过隐藏输入读取，只放在发往你指定接口的 Authorization 请求头中；工具不会把它写入文件。
+- API Key 通过隐藏输入或指定的环境变量读取，只放在发往你指定接口的 Authorization 请求头中；工具不会把它写入文件。
 - 工具没有遥测或账号系统。
 - 报告省略 API Key、URL 路径、提示词和回复正文。
 - 远程接口必须使用 HTTPS；只有 localhost 测试允许普通 HTTP。

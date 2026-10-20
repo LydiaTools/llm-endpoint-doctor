@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import io
+import os
 import tempfile
 import threading
 import unittest
@@ -195,6 +196,47 @@ class CoreTests(unittest.TestCase):
             self.assertNotIn("hidden-test-key", report_text)
             self.assertNotIn("endpoint-ok", report_text)
             self.assertNotIn("/v1", report_text)
+
+    def test_cli_reads_key_from_environment_without_printing_or_persisting_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = Path(directory) / "report.json"
+            output = io.StringIO()
+            with patch.dict(os.environ, {"LLM_DOCTOR_TEST_KEY": "hidden-env-key"}):
+                with patch("getpass.getpass", side_effect=AssertionError("interactive prompt used")):
+                    with redirect_stdout(output):
+                        exit_code = main([
+                            "--base-url", self.base_url,
+                            "--model", "fixture-model",
+                            "--api-key-env", "LLM_DOCTOR_TEST_KEY",
+                            "--json-report", str(report_path),
+                        ])
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(_State.requests[0]["authorization"], "Bearer hidden-env-key")
+            self.assertNotIn("hidden-env-key", output.getvalue())
+            self.assertNotIn("hidden-env-key", report_path.read_text(encoding="utf-8"))
+
+    def test_cli_no_prompt_runs_a_keyless_check_without_reading_input(self) -> None:
+        output = io.StringIO()
+        with patch("getpass.getpass", side_effect=AssertionError("interactive prompt used")):
+            with redirect_stdout(output):
+                exit_code = main([
+                    "--base-url", self.base_url,
+                    "--model", "fixture-model",
+                    "--no-prompt",
+                ])
+        self.assertEqual(exit_code, 0)
+        self.assertIsNone(_State.requests[0]["authorization"])
+
+    def test_missing_key_environment_variable_fails_before_network_request(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                main([
+                    "--base-url", self.base_url,
+                    "--model", "fixture-model",
+                    "--api-key-env", "MISSING_LLM_DOCTOR_TEST_KEY",
+                ])
+        self.assertEqual(error.exception.code, 2)
+        self.assertEqual(_State.requests, [])
 
 
 if __name__ == "__main__":

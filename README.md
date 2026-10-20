@@ -54,6 +54,27 @@ llm-doctor \
 
 The JSON report is created only if the destination file does not already exist. It includes the target host, model ID, check results, and timings. It excludes the API key, URL path, prompts, and response content.
 
+## Non-interactive and CI use
+
+For a keyless endpoint, skip the prompt explicitly:
+
+```bash
+llm-doctor --base-url http://localhost:8000/v1 --model local-model --no-prompt
+```
+
+For CI, read the key from an environment variable so it never appears in command arguments:
+
+```yaml
+- name: Check LLM endpoint
+  env:
+    LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+  run: >-
+    llm-doctor --base-url https://api.example.com/v1
+    --model your-model-id --api-key-env LLM_API_KEY
+```
+
+If the named environment variable is missing or empty, the command stops before sending a request.
+
 ## What it checks
 
 - **Chat completion:** Sends one short test prompt to `/chat/completions` and verifies the response has text in the expected OpenAI chat format.
@@ -66,7 +87,7 @@ The tool makes no automatic retries. It does not grade answer quality, benchmark
 
 ## Privacy and request handling
 
-- The API key is entered with a hidden prompt, used in the authorization header for the endpoint you supplied, and never written to a file by the tool.
+- The API key is entered with a hidden prompt or read from a named environment variable, used in the authorization header for the endpoint you supplied, and never written to a file by the tool.
 - The tool has no telemetry or account system.
 - Reports omit the API key, URL path, prompt, and response text.
 - Remote endpoints must use HTTPS. Plain HTTP is allowed only for localhost tests.

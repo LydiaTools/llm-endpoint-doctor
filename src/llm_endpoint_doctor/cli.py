@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +23,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-model-list", action="store_true", help="Also GET /models (one extra request)")
     parser.add_argument("--check-streaming", action="store_true", help="Also test SSE streaming (one extra generation)")
     parser.add_argument("--check-json-mode", action="store_true", help="Also test JSON mode (one extra generation)")
+    key_group = parser.add_mutually_exclusive_group()
+    key_group.add_argument("--api-key-env", metavar="NAME", help="Read the API key from an environment variable")
+    key_group.add_argument("--no-prompt", action="store_true", help="Skip the hidden key prompt (for keyless endpoints)")
     parser.add_argument("--json-report", type=Path, help="Write a sanitized JSON report to a new file")
     parser.add_argument("--version", action="version", version=f"llm-doctor {__version__}")
     return parser
@@ -59,7 +63,14 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"report directory does not exist: {args.json_report.parent}")
 
     try:
-        api_key = getpass.getpass("API key (press Enter for a keyless endpoint): ")
+        if args.api_key_env is not None:
+            api_key = os.environ.get(args.api_key_env)
+            if not api_key:
+                parser.error(f"environment variable {args.api_key_env} is not set or empty")
+        elif args.no_prompt:
+            api_key = ""
+        else:
+            api_key = getpass.getpass("API key (press Enter for a keyless endpoint): ")
         report = run_diagnostics(
             base_url=args.base_url,
             model=args.model,
