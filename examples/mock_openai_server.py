@@ -14,6 +14,7 @@ MAX_BODY_BYTES = 1_000_000
 
 class MockOpenAIHandler(BaseHTTPRequestHandler):
     server_version = "LLMEndpointDoctorDemo/1.0"
+    minimum_output_tokens = 0
 
     def log_message(self, *_: Any) -> None:
         # Do not print request headers, keys, or request bodies.
@@ -63,18 +64,23 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": {"message": "A model is required"}}, 400)
             return
 
+        cap = request.get("max_completion_tokens", request.get("max_tokens", 0))
+        limited = type(cap) is int and cap < self.minimum_output_tokens
+
         if request.get("stream") is True:
             stream_options = request.get("stream_options")
             include_usage = (
                 isinstance(stream_options, dict)
                 and stream_options.get("include_usage") is True
             )
-            self._send_stream(include_usage=include_usage)
+            self._send_stream(include_usage=include_usage, limited=limited)
             return
 
         response_format = request.get("response_format")
         wants_json = isinstance(response_format, dict) and response_format.get("type") == "json_object"
         content = '{"status":"ok"}' if wants_json else "endpoint-ok"
+        if limited:
+            content = ""
         self._send_json({
             "id": "chatcmpl-local-demo",
             "object": "chat.completion",
@@ -82,12 +88,13 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             "choices": [{
                 "index": 0,
                 "message": {"role": "assistant", "content": content},
-                "finish_reason": "stop",
+                "finish_reason": "length" if limited else "stop",
             }],
         })
 
-    def _send_stream(self, *, include_usage: bool) -> None:
-        chunks = ['data: {"choices":[{"index":0,"delta":{"content":"endpoint-ok"}}]}\n\n']
+    def _send_stream(self, *, include_usage: bool, limited: bool = False) -> None:
+        delta = {} if limited else {"content": "endpoint-ok"}
+        chunks = ['data: ' + json.dumps({"choices": [{"index": 0, "delta": delta, "finish_reason": "length" if limited else "stop"}]}) + '\n\n']
         if include_usage:
             chunks.append('data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n')
         chunks.append("data: [DONE]\n\n")
@@ -103,15 +110,19 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Start a local mock OpenAI-compatible endpoint.")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port (default: 8765)")
+    parser.add_argument("--simulate-token-limit", action="store_true", help="Synthetic length-ended response below 64 output tokens; no real model")
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
 
     try:
+        MockOpenAIHandler.minimum_output_tokens = 64 if args.simulate_token_limit else 0
         server = ThreadingHTTPServer(("127.0.0.1", args.port), MockOpenAIHandler)
     except OSError as exc:
         parser.error(f"could not listen on 127.0.0.1:{args.port}: {exc}")
     print(f"Local demo endpoint ready at http://127.0.0.1:{args.port}/v1 (Ctrl+C to stop)")
+    if args.simulate_token_limit:
+        print("Synthetic token-limit mode: caps below 64 return finish_reason=length; no real model is running.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

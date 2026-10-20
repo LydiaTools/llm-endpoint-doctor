@@ -12,6 +12,8 @@
 
 它补充 API 资源目录：目录帮你找到接口，本工具检查你准备使用的接口。
 
+**正在接入免费档模型？** [Groq、Gemini、OpenRouter 三家接入指南](docs/free-api-setup.zh-CN.md)列出正确地址、模型选择入口和可复制的单次检查。[English guide](docs/free-api-setup.md)。
+
 ## 快速开始
 
 需要 Python 3.9 或更新版本，无第三方运行依赖。
@@ -26,6 +28,8 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id
 ```
 
 API Key 会通过隐藏输入提示读取。无 Key 接口直接回车。默认只发送 **一条**聊天补全请求。
+
+默认输出预算刻意保持很小：普通检查12 token，可选JSON检查24 token。使用思考型模型时，可显式增加预算，例如 `--max-output-tokens 1024`；服务商要求新参数名时，再选 `--token-field max_completion_tokens`。设置会应用到每个已选生成检查，不增加请求或自动重试。`finish_reason=length`会明确标为截断，即使已有部分文字、合法JSON、用量或SSE的`[DONE]`也不算该项完整通过。[无需Key的复现步骤](docs/free-api-setup.zh-CN.md#不用key复现输出预算问题)。
 
 ```text
 LLM Endpoint Doctor

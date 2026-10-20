@@ -12,6 +12,8 @@ One local command checks your base URL, model ID, authentication, and first chat
 
 It complements provider directories: directories help you find an endpoint; this tool checks the endpoint you plan to use.
 
+**Connecting a free-tier model?** Start with [three provider recipes: Groq, Gemini and OpenRouter](docs/free-api-setup.md). Each includes the correct base URL, where to choose the model, and one copyable check. [中文接入指南](docs/free-api-setup.zh-CN.md).
+
 ## Quick start
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
@@ -26,6 +28,8 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id
 ```
 
 The API key is requested through a hidden terminal prompt. Press Enter for a keyless endpoint. The default run sends **one** chat-completion request.
+
+The default output cap is deliberately small: 12 tokens, or 24 for the optional JSON check. For a reasoning model, select a budget explicitly, for example `--max-output-tokens 1024`. If your provider requires the newer field, also use `--token-field max_completion_tokens`. Both apply to every selected generation check; neither adds a retry or a request. A response ending with `finish_reason=length` is reported as truncated, even if it includes text, valid JSON, usage or an SSE `[DONE]` marker. [Keyless, reproducible example](docs/free-api-setup.md#reproduce-the-output-budget-case-without-a-key).
 
 ```text
 LLM Endpoint Doctor

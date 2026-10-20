@@ -20,6 +20,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", required=True, help="API base URL, such as https://api.example.com/v1")
     parser.add_argument("--model", required=True, help="Exact model ID or provider alias to test")
     parser.add_argument("--timeout", type=float, default=20.0, help="Per-request timeout in seconds (default: 20)")
+    parser.add_argument("--max-output-tokens", type=int, metavar="N", help="Explicit output cap, 1..8192; may include reasoning tokens (default: 12, or 24 for JSON)")
+    parser.add_argument("--token-field", choices=("max_tokens", "max_completion_tokens"), default="max_tokens", help="Output-cap request field required by your provider (default: max_tokens)")
     parser.add_argument("--check-model-list", action="store_true", help="Also GET /models (one extra request)")
     parser.add_argument("--check-streaming", action="store_true", help="Also test SSE streaming (one extra generation)")
     parser.add_argument("--check-stream-options", action="store_true", help="Also test stream_options.include_usage (one extra generation)")
@@ -51,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not 1 <= args.timeout <= 120:
         parser.error("--timeout must be between 1 and 120 seconds")
+    if args.max_output_tokens is not None and not 1 <= args.max_output_tokens <= 8192:
+        parser.error("--max-output-tokens must be between 1 and 8192")
     try:
         normalize_base_url(args.base_url)
     except ValueError as exc:
@@ -81,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
             check_streaming=args.check_streaming,
             check_json_mode=args.check_json_mode,
             check_stream_options=args.check_stream_options,
+            max_output_tokens=args.max_output_tokens,
+            token_field=args.token_field,
         )
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.", file=sys.stderr)

@@ -6,7 +6,7 @@ import os
 import tempfile
 import threading
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -22,6 +22,8 @@ class _State:
     redirect_status = 307
     redirected_authorization: str | None = None
     reject_stream_options = False
+    minimum_output_tokens = 0
+    finish_reason = "stop"
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -64,10 +66,14 @@ class _Handler(BaseHTTPRequestHandler):
         if _State.status_code != 200:
             self._send_json({"error": {"message": "sensitive-provider-error-body"}}, _State.status_code)
             return
+        cap = body.get("max_completion_tokens", body.get("max_tokens", 0))
+        limited = cap < _State.minimum_output_tokens
+        finish_reason = "length" if limited else _State.finish_reason
         if body.get("stream"):
             chunks = [b'data: {"choices":[{"delta":{"content":"endpoint-ok"}}]}\n\n']
             if isinstance(body.get("stream_options"), dict) and body["stream_options"].get("include_usage"):
                 chunks.append(b'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n')
+            chunks.append(('data: ' + json.dumps({"choices": [{"finish_reason": finish_reason, "delta": {}}]}) + '\n\n').encode())
             chunks.append(b"data: [DONE]\n\n")
             stream = b"".join(chunks)
             self.send_response(200)
@@ -80,7 +86,9 @@ class _Handler(BaseHTTPRequestHandler):
             content = '{"status":"ok"}'
         else:
             content = "endpoint-ok"
-        self._send_json({"choices": [{"message": {"content": content}}]})
+        if limited:
+            content = ""
+        self._send_json({"choices": [{"message": {"content": content, "reasoning_content": "private-fixture-reasoning"}, "finish_reason": finish_reason}]})
 
 
 class _CaptureRedirectHandler(BaseHTTPRequestHandler):
@@ -115,6 +123,8 @@ class CoreTests(unittest.TestCase):
         _State.redirect_status = 307
         _State.redirected_authorization = None
         _State.reject_stream_options = False
+        _State.minimum_output_tokens = 0
+        _State.finish_reason = "stop"
 
     def test_base_url_normalization_and_rejections(self) -> None:
         self.assertEqual(normalize_base_url(" https://api.example.com/v1/ "), "https://api.example.com/v1")
@@ -260,6 +270,74 @@ class CoreTests(unittest.TestCase):
                     "--api-key-env", "MISSING_LLM_DOCTOR_TEST_KEY",
                 ])
         self.assertEqual(error.exception.code, 2)
+        self.assertEqual(_State.requests, [])
+
+    def test_output_limit_is_distinct_from_a_missing_response_and_never_retries(self) -> None:
+        _State.minimum_output_tokens = 64
+        limited = run_diagnostics(self.base_url, "fixture-model", "fixture-secret")
+        self.assertFalse(limited.chat_ready)
+        self.assertEqual(len(_State.requests), 1)
+        self.assertEqual(_State.requests[0]["body"]["max_tokens"], 12)
+        self.assertIn("finish_reason=length", limited.checks[0].detail)
+        self.assertIn("--max-output-tokens", limited.checks[0].detail)
+        self.assertIn("No automatic retry", limited.checks[0].detail)
+        self.assertNotIn("fixture-secret", json.dumps(limited.to_dict()))
+        self.assertNotIn("private-fixture-reasoning", json.dumps(limited.to_dict()))
+
+        explicit = run_diagnostics(self.base_url, "fixture-model", max_output_tokens=64)
+        self.assertTrue(explicit.chat_ready)
+        self.assertEqual(len(_State.requests), 2)
+        self.assertEqual(_State.requests[1]["body"]["max_tokens"], 64)
+
+    def test_partial_text_done_marker_usage_and_valid_json_do_not_hide_length_limit(self) -> None:
+        _State.finish_reason = "length"
+        report = run_diagnostics(self.base_url, "fixture-model", check_streaming=True, check_stream_options=True, check_json_mode=True)
+        self.assertFalse(report.chat_ready)
+        self.assertEqual(len(_State.requests), 4)
+        self.assertEqual([check.status for check in report.checks], ["fail", "warn", "warn", "warn"])
+        for check in report.checks:
+            self.assertIn("finish_reason=length", check.detail)
+        self.assertNotIn("endpoint-ok", json.dumps(report.to_dict()))
+        self.assertNotIn("private-fixture-reasoning", json.dumps(report.to_dict()))
+
+    def test_default_output_caps_are_unchanged_for_all_modes(self) -> None:
+        report = run_diagnostics(self.base_url, "fixture-model", check_streaming=True, check_stream_options=True, check_json_mode=True)
+        self.assertTrue(report.chat_ready)
+        self.assertEqual([r["body"]["max_tokens"] for r in _State.requests], [12, 12, 12, 24])
+        self.assertTrue(all("max_completion_tokens" not in r["body"] for r in _State.requests))
+
+    def test_explicit_budget_and_field_apply_to_each_generation_not_catalog(self) -> None:
+        report = run_diagnostics(self.base_url, "fixture-model", check_model_list=True, check_streaming=True, check_stream_options=True, check_json_mode=True, max_output_tokens=1024, token_field="max_completion_tokens")
+        self.assertTrue(report.chat_ready)
+        self.assertEqual(len(_State.requests), 5)
+        self.assertEqual(_State.requests[0]["method"], "GET")
+        for request in _State.requests[1:]:
+            self.assertEqual(request["body"]["max_completion_tokens"], 1024)
+            self.assertNotIn("max_tokens", request["body"])
+
+    def test_bad_output_controls_stop_before_any_request(self) -> None:
+        for cap in (0, -1, 8193, True, 1.5, "64"):
+            with self.subTest(cap=cap), self.assertRaises(ValueError):
+                run_diagnostics(self.base_url, "fixture-model", max_output_tokens=cap)
+        with self.assertRaises(ValueError):
+            run_diagnostics(self.base_url, "fixture-model", token_field="provider-arbitrary-field")
+        self.assertEqual(_State.requests, [])
+
+    def test_cli_output_controls_reach_the_request(self) -> None:
+        _State.minimum_output_tokens = 64
+        with redirect_stdout(io.StringIO()):
+            code = main(["--base-url", self.base_url, "--model", "fixture-model", "--no-prompt", "--max-output-tokens", "64", "--token-field", "max_completion_tokens"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(_State.requests), 1)
+        self.assertEqual(_State.requests[0]["body"]["max_completion_tokens"], 64)
+        self.assertNotIn("max_tokens", _State.requests[0]["body"])
+
+    def test_invalid_cli_budget_does_not_prompt_or_send(self) -> None:
+        for cap in ("0", "8193", "not-a-number"):
+            with self.subTest(cap=cap), patch("getpass.getpass", side_effect=AssertionError("prompt used")):
+                with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                    main(["--base-url", self.base_url, "--model", "fixture-model", "--max-output-tokens", cap])
+            self.assertEqual(error.exception.code, 2)
         self.assertEqual(_State.requests, [])
 
 

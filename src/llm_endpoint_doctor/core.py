@@ -217,12 +217,34 @@ def _message_content(payload: Any) -> str | None:
     return content if isinstance(content, str) else None
 
 
-def _chat_body(model: str, *, stream: bool = False, json_mode: bool = False) -> dict[str, Any]:
+_OUTPUT_LIMIT_DETAIL = (
+    "HTTP succeeded, but finish_reason=length reports a truncated generation. "
+    "Check the output budget (reasoning can consume it); choose --max-output-tokens explicitly. "
+    "No automatic retry was made."
+)
+
+
+def _output_limited(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    choices = payload.get("choices")
+    return (
+        isinstance(choices, list)
+        and bool(choices)
+        and isinstance(choices[0], dict)
+        and choices[0].get("finish_reason") == "length"
+    )
+
+
+def _chat_body(
+    model: str, *, stream: bool = False, json_mode: bool = False,
+    max_output_tokens: int | None = None, token_field: str = "max_tokens",
+) -> dict[str, Any]:
     prompt = 'Reply with exactly the JSON object {"status":"ok"}.' if json_mode else "Reply with exactly: endpoint-ok"
     body: dict[str, Any] = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 24 if json_mode else 12,
+        token_field: max_output_tokens if max_output_tokens is not None else (24 if json_mode else 12),
         "stream": stream,
     }
     if json_mode:
@@ -271,6 +293,7 @@ def _request_stream(
         text = ""
     saw_done = False
     saw_usage = False
+    saw_length_limit = False
     for line in text.splitlines():
         line = line.strip()
         if line == "data: [DONE]":
@@ -284,7 +307,11 @@ def _request_stream(
             continue
         if isinstance(chunk, dict) and isinstance(chunk.get("usage"), dict):
             saw_usage = True
-    return _Response(status_code, elapsed, payload={"saw_done": saw_done, "saw_usage": saw_usage})
+        if _output_limited(chunk):
+            saw_length_limit = True
+    return _Response(status_code, elapsed, payload={
+        "saw_done": saw_done, "saw_usage": saw_usage, "saw_length_limit": saw_length_limit,
+    })
 
 
 def run_diagnostics(
@@ -296,6 +323,8 @@ def run_diagnostics(
     check_streaming: bool = False,
     check_json_mode: bool = False,
     check_stream_options: bool = False,
+    max_output_tokens: int | None = None,
+    token_field: str = "max_tokens",
 ) -> DiagnosticReport:
     normalized = normalize_base_url(base_url)
     model = model.strip()
@@ -307,6 +336,11 @@ def run_diagnostics(
         raise ValueError("API key contains control characters.")
     if not 1 <= timeout <= 120:
         raise ValueError("Timeout must be between 1 and 120 seconds.")
+    if max_output_tokens is not None and (type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 8192):
+        raise ValueError("Output token limit must be an integer between 1 and 8192.")
+    if token_field not in ("max_tokens", "max_completion_tokens"):
+        raise ValueError("Token field must be max_tokens or max_completion_tokens.")
+    body_options = {"max_output_tokens": max_output_tokens, "token_field": token_field}
     checks: list[CheckResult] = []
 
     if check_model_list:
@@ -327,11 +361,13 @@ def run_diagnostics(
         normalized,
         "/chat/completions",
         api_key,
-        _chat_body(model),
+        _chat_body(model, **body_options),
         timeout,
     )
     content = _message_content(result.payload)
-    if result.status_code is not None and 200 <= result.status_code < 300 and content:
+    if result.status_code is not None and 200 <= result.status_code < 300 and _output_limited(result.payload):
+        checks.append(CheckResult("chat completion", "fail", _OUTPUT_LIMIT_DETAIL, result.elapsed_ms))
+    elif result.status_code is not None and 200 <= result.status_code < 300 and content:
         checks.append(CheckResult("chat completion", "pass", "A non-empty chat response was returned.", result.elapsed_ms))
     elif result.status_code is not None and 200 <= result.status_code < 300:
         checks.append(CheckResult("chat completion", "fail", "HTTP succeeded, but no chat text was found in the expected response shape.", result.elapsed_ms))
@@ -339,8 +375,10 @@ def run_diagnostics(
         checks.append(CheckResult("chat completion", "fail", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
 
     if check_streaming:
-        result = _request_stream(normalized, api_key, _chat_body(model, stream=True), timeout)
-        if result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_done"):
+        result = _request_stream(normalized, api_key, _chat_body(model, stream=True, **body_options), timeout)
+        if result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_length_limit"):
+            checks.append(CheckResult("streaming", "warn", _OUTPUT_LIMIT_DETAIL, result.elapsed_ms))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_done"):
             checks.append(CheckResult("streaming", "pass", "Server sent an SSE completion marker.", result.elapsed_ms))
         elif result.status_code is not None and 200 <= result.status_code < 300:
             checks.append(CheckResult("streaming", "warn", "HTTP succeeded, but no SSE completion marker was detected.", result.elapsed_ms))
@@ -348,11 +386,13 @@ def run_diagnostics(
             checks.append(CheckResult("streaming", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
 
     if check_stream_options:
-        body = _chat_body(model, stream=True)
+        body = _chat_body(model, stream=True, **body_options)
         body["stream_options"] = {"include_usage": True}
         result = _request_stream(normalized, api_key, body, timeout)
         complete = result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_done")
-        if complete and result.payload.get("saw_usage"):
+        if result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_length_limit"):
+            checks.append(CheckResult("stream options", "warn", _OUTPUT_LIMIT_DETAIL, result.elapsed_ms))
+        elif complete and result.payload.get("saw_usage"):
             checks.append(CheckResult("stream options", "pass", "SSE completed and included usage metadata when requested.", result.elapsed_ms))
         elif complete:
             checks.append(CheckResult("stream options", "warn", "SSE completed, but no usage metadata was returned despite include_usage.", result.elapsed_ms))
@@ -366,11 +406,13 @@ def run_diagnostics(
             normalized,
             "/chat/completions",
             api_key,
-            _chat_body(model, json_mode=True),
+            _chat_body(model, json_mode=True, **body_options),
             timeout,
         )
         content = _message_content(result.payload)
-        if result.status_code is not None and 200 <= result.status_code < 300 and content:
+        if result.status_code is not None and 200 <= result.status_code < 300 and _output_limited(result.payload):
+            checks.append(CheckResult("JSON mode", "warn", _OUTPUT_LIMIT_DETAIL, result.elapsed_ms))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and content:
             try:
                 parsed_content = json.loads(content)
                 valid = isinstance(parsed_content, dict)
