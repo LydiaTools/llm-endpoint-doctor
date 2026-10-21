@@ -20,6 +20,8 @@
 
 需要 Python 3.9 或更新版本，无第三方运行依赖。
 
+想直接安装预构建包？下载 [v0.6.0 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
+
 ```bash
 git clone https://github.com/LydiaTools/llm-endpoint-doctor.git
 cd llm-endpoint-doctor

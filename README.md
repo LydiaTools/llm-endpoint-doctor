@@ -20,6 +20,8 @@ It complements provider directories: directories help you find an endpoint; this
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
 
+Prefer a prebuilt package? Download the [v0.6.0 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl.sha256). This is an alpha preview.
+
 ```bash
 git clone https://github.com/LydiaTools/llm-endpoint-doctor.git
 cd llm-endpoint-doctor
