@@ -1,8 +1,8 @@
 # LLM Endpoint Doctor
 
-**Check chat and image endpoints before you wire an OpenAI-compatible API into your app.**
+**Check chat, vision input, and image generation before you wire an OpenAI-compatible API into your app.**
 
-One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, or a separate image-generation model only when you need them.
+One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, vision input, or a separate image-generation model only when you need them.
 
 [简体中文](README.zh-CN.md) · [Report a bug](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
@@ -14,7 +14,7 @@ It complements provider directories: directories help you find an endpoint; this
 
 **Connecting a free-tier model?** Start with [three provider recipes: Groq, Gemini and OpenRouter](docs/free-api-setup.md). Each includes the correct base URL, where to choose the model, and one copyable check. [中文接入指南](docs/free-api-setup.zh-CN.md).
 
-**Starting an agent loop?** [Check the billing project and count requests first](docs/api-cost-preflight.md): Gemini's current spend-cap path, its reporting delay, and a keyless example that observes one default request versus five with all checks.
+**Starting an agent loop?** [Check the billing project and count requests first](docs/api-cost-preflight.md): Gemini's current spend-cap path, its reporting delay, and keyless request counts for the default and optional checks.
 
 ## Quick start
 
@@ -31,7 +31,7 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id
 
 The API key is requested through a hidden terminal prompt. Press Enter for a keyless endpoint. The default run sends **one** chat-completion request.
 
-The default output cap is deliberately small: 12 tokens, or 24 for the optional JSON check. For a reasoning model, select a budget explicitly, for example `--max-output-tokens 1024`. If your provider requires the newer field, also use `--token-field max_completion_tokens`. Both apply to every selected generation check; neither adds a retry or a request. A response ending with `finish_reason=length` is reported as truncated, even if it includes text, valid JSON, usage or an SSE `[DONE]` marker. [Keyless, reproducible example](docs/free-api-setup.md#reproduce-the-output-budget-case-without-a-key).
+The default output cap is deliberately small: 12 tokens for ordinary chat and 24 for JSON or the vision check. For a reasoning model, select a budget explicitly, for example `--max-output-tokens 1024`. If your provider requires the newer field, also use `--token-field max_completion_tokens`. Both apply to every selected generation check; neither adds a retry or a request. A response ending with `finish_reason=length` is reported as truncated, even if it includes text, valid JSON, usage or an SSE `[DONE]` marker. [Keyless, reproducible example](docs/free-api-setup.md#reproduce-the-output-budget-case-without-a-key).
 
 ```text
 LLM Endpoint Doctor
@@ -64,7 +64,9 @@ llm-doctor \
   --check-stream-options \
   --check-json-mode \
   --check-image-generation \
-  --image-model demo-image-model
+  --image-model demo-image-model \
+  --check-vision-input \
+  --vision-model demo-vision-model
 ```
 
 ```text
@@ -74,6 +76,7 @@ llm-doctor \
 [PASS] stream options — SSE completed and included usage metadata when requested.
 [PASS] JSON mode — Returned a JSON object.
 [PASS] image generation — Returned an image result in base64 or HTTP(S) URL form; the media was not downloaded or saved.
+[PASS] vision input — The response matched the built-in color sequence.
 
 Basic chat: READY
 ```
@@ -94,7 +97,7 @@ You can also inspect one local capture with `--file capture.sse`; output contain
 
 ## Optional checks
 
-Each option adds a request. Streaming, stream-options, and JSON-mode checks each send one additional generation request.
+Each selected check adds one request. Streaming, stream-options, JSON mode, image generation, and vision input each send one additional generation request; the model catalog check adds one GET.
 
 ```bash
 llm-doctor \
@@ -120,6 +123,12 @@ llm-doctor \
 ```
 
 This sends one fixed prompt (`A simple blue circle centered on a plain white background.`) to `POST /images/generations` with `n=1`. It uses the same `--base-url` and API key as the chat check, but the image model may differ. Image generation can incur provider charges. The tool checks for a non-empty base64 image result or an HTTP(S) result URL; it does not download or save the image. The response is held only long enough to inspect it, up to a 32 MB safety limit. [OpenAI image-generation API reference](https://developers.openai.com/api/reference/resources/images/methods/generate).
+
+## Check vision input
+
+Run `llm-doctor --check-vision-input` to send one extra `POST /chat/completions` containing a small built-in synthetic PNG as a Base64 data URL. The image has four colored quadrants. By default, the check uses the chat model; `--vision-model` selects a different one.
+
+A pass means the response matched the expected clockwise color sequence. A response that does not match is reported as unconfirmed. This is a smoke test, not an accuracy benchmark or proof of vision quality. The provider receives the image request and may charge for it. The PNG is generated in memory, not fetched from a URL, and not written to disk. [OpenAI vision input format](https://developers.openai.com/api/docs/guides/images-vision).
 
 ## Non-interactive and CI use
 
@@ -150,6 +159,7 @@ If the named environment variable is missing or empty, the command stops before 
 - **Stream options (optional):** Sends `stream_options: {"include_usage": true}` with a streaming request and checks whether usage metadata arrives. This can reveal endpoints that accept ordinary streaming but reject or ignore this client option.
 - **JSON mode (optional):** Requests a JSON object and checks that the returned content parses as an object.
 - **Image generation (optional):** With `--check-image-generation --image-model ID`, sends one additional fixed-prompt request to `/images/generations` and checks for a non-empty `data[].b64_json` or HTTP(S) `data[].url` result. It does not fetch URL results, decode or save image bytes, or judge image quality.
+- **Vision input (optional):** With `--check-vision-input`, sends one additional chat request with a built-in synthetic PNG data URL. It checks the response against four expected color quadrants; a mismatch stays unconfirmed. This is not a vision-quality benchmark.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
 
 The tool makes no automatic retries. It does not grade answer quality, benchmark providers, guarantee compatibility with every client, or determine whether a provider's free tier will remain available.
@@ -163,6 +173,7 @@ The tool makes no automatic retries. It does not grade answer quality, benchmark
 - Query strings, URL-embedded credentials, and cross-origin redirects are rejected so a key is not forwarded to another host.
 - The endpoint provider receives the test request and may count it against its own limits. Optional checks send extra requests; use them only when needed.
 - The image check sends its fixed prompt to the endpoint and may incur image-generation charges. It requests one image and does not save the returned image; oversized responses are not parsed.
+- The vision check sends one built-in synthetic image to the endpoint and may incur provider charges. The image is generated in memory and is not saved. It makes no repeated or follow-up requests.
 
 ## Development
 

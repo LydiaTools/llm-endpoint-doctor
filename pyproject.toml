@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-endpoint-doctor"
-version = "0.4.0"
-description = "A local-first smoke test for OpenAI-compatible chat and image-generation endpoints."
+version = "0.5.0"
+description = "A local-first smoke test for OpenAI-compatible chat, vision-input, and image-generation endpoints."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [{ name = "LydiaTools" }]
-keywords = ["llm", "image-generation", "openai-compatible", "api", "developer-tools", "diagnostics"]
+keywords = ["llm", "vision", "image-generation", "openai-compatible", "api", "developer-tools", "diagnostics"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",

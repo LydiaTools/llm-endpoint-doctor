@@ -14,13 +14,13 @@ from .core import DiagnosticReport, normalize_base_url, run_diagnostics
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-doctor",
-        description="Check OpenAI-compatible chat and optional image-generation endpoints.",
-        epilog="The default run sends one chat request. Each selected check sends one extra request; image generation may incur provider charges.",
+        description="Check OpenAI-compatible chat and optional vision/image-generation endpoints.",
+        epilog="The default run sends one chat request. Each selected check sends one extra request. Vision and image checks may incur provider charges.",
     )
     parser.add_argument("--base-url", required=True, help="API base URL, such as https://api.example.com/v1")
     parser.add_argument("--model", required=True, help="Exact model ID or provider alias to test")
     parser.add_argument("--timeout", type=float, default=20.0, help="Per-request timeout in seconds (default: 20)")
-    parser.add_argument("--max-output-tokens", type=int, metavar="N", help="Explicit output cap, 1..8192; may include reasoning tokens (default: 12, or 24 for JSON)")
+    parser.add_argument("--max-output-tokens", type=int, metavar="N", help="Explicit output cap, 1..8192; may include reasoning tokens (default: 12 for chat, 24 for JSON/vision)")
     parser.add_argument("--token-field", choices=("max_tokens", "max_completion_tokens"), default="max_tokens", help="Output-cap request field required by your provider (default: max_tokens)")
     parser.add_argument("--check-model-list", action="store_true", help="Also GET /models (one extra request)")
     parser.add_argument("--check-streaming", action="store_true", help="Also test SSE streaming (one extra generation)")
@@ -28,6 +28,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-json-mode", action="store_true", help="Also test JSON mode (one extra generation)")
     parser.add_argument("--check-image-generation", action="store_true", help="Also send one image request to /images/generations using the same base URL and key; may incur provider charges")
     parser.add_argument("--image-model", help="Exact image model ID; required with --check-image-generation")
+    parser.add_argument("--check-vision-input", action="store_true", help="Also send one chat request with a built-in synthetic PNG; may incur provider charges")
+    parser.add_argument("--vision-model", help="Model ID for the vision check (default: --model); only with --check-vision-input")
     key_group = parser.add_mutually_exclusive_group()
     key_group.add_argument("--api-key-env", metavar="NAME", help="Read the API key from an environment variable")
     key_group.add_argument("--no-prompt", action="store_true", help="Skip the hidden key prompt (for keyless endpoints)")
@@ -42,6 +44,8 @@ def _print_report(report: DiagnosticReport) -> None:
     print(f"Model: {report.model}")
     if report.image_model is not None:
         print(f"Image model: {report.image_model}")
+    if report.vision_model is not None:
+        print(f"Vision model: {report.vision_model}")
     print("")
     for check in report.checks:
         label = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}.get(check.status, check.status.upper())
@@ -75,6 +79,14 @@ def main(argv: list[str] | None = None) -> int:
         or not args.image_model.strip().isprintable()
     ):
         parser.error("--image-model must be printable and between 1 and 256 characters")
+    if not args.check_vision_input and args.vision_model is not None:
+        parser.error("--vision-model can only be used with --check-vision-input")
+    if args.vision_model is not None and (
+        not args.vision_model.strip()
+        or len(args.vision_model.strip()) > 256
+        or not args.vision_model.strip().isprintable()
+    ):
+        parser.error("--vision-model must be printable and between 1 and 256 characters")
     if args.json_report:
         if args.json_report.exists():
             parser.error(f"report file already exists: {args.json_report}")
@@ -103,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
             token_field=args.token_field,
             check_image_generation=args.check_image_generation,
             image_model=args.image_model,
+            check_vision_input=args.check_vision_input,
+            vision_model=args.vision_model,
         )
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.", file=sys.stderr)

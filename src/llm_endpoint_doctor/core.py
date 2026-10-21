@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import json
+import base64
 import ipaddress
+import json
 import socket
+import struct
 import time
+import zlib
 from dataclasses import asdict, dataclass
 from http.client import HTTPResponse
 from typing import Any
@@ -15,6 +18,7 @@ from . import __version__
 
 _MAX_JSON_RESPONSE_BYTES = 1_000_000
 _MAX_IMAGE_RESPONSE_BYTES = 32_000_000
+_VISION_EXPECTED_COLORS = ("red", "green", "blue", "yellow")
 
 
 @dataclass
@@ -34,6 +38,7 @@ class DiagnosticReport:
     model: str
     checks: list[CheckResult]
     image_model: str | None = None
+    vision_model: str | None = None
 
     @property
     def chat_ready(self) -> bool:
@@ -42,6 +47,13 @@ class DiagnosticReport:
     @property
     def image_generation_ready(self) -> bool | None:
         check = next((c for c in self.checks if c.name == "image generation"), None)
+        if check is None or check.status == "warn":
+            return None
+        return check.status == "pass"
+
+    @property
+    def vision_input_ready(self) -> bool | None:
+        check = next((c for c in self.checks if c.name == "vision input"), None)
         if check is None or check.status == "warn":
             return None
         return check.status == "pass"
@@ -55,6 +67,8 @@ class DiagnosticReport:
             "chat_ready": self.chat_ready,
             "image_model": self.image_model,
             "image_generation_ready": self.image_generation_ready,
+            "vision_model": self.vision_model,
+            "vision_input_ready": self.vision_input_ready,
             "checks": [c.to_dict() for c in self.checks],
         }
 
@@ -260,6 +274,41 @@ def _has_image_result(payload: Any) -> bool:
     return False
 
 
+def _vision_probe_data_url() -> str:
+    """Build a small deterministic 2x2 PNG using only the standard library."""
+    width = height = 64
+    rgb = {
+        "red": (255, 0, 0),
+        "green": (0, 255, 0),
+        "blue": (0, 0, 255),
+        "yellow": (255, 255, 0),
+    }
+    rows = bytearray()
+    for y in range(height):
+        rows.append(0)  # PNG filter: None
+        for x in range(width):
+            if y < height // 2:
+                color = "red" if x < width // 2 else "green"
+            else:
+                color = "yellow" if x < width // 2 else "blue"
+            rows.extend(rgb[color])
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(bytes(rows)))
+    png += chunk(b"IEND", b"")
+    encoded = base64.b64encode(png).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def _matches_vision_probe(content: str) -> bool:
+    colors = tuple(color.strip() for color in content.lower().strip().split(","))
+    return tuple(colors) == _VISION_EXPECTED_COLORS
+
+
 _OUTPUT_LIMIT_DETAIL = (
     "HTTP succeeded, but finish_reason=length reports a truncated generation. "
     "Check the output budget (reasoning can consume it); choose --max-output-tokens explicitly. "
@@ -370,6 +419,8 @@ def run_diagnostics(
     token_field: str = "max_tokens",
     check_image_generation: bool = False,
     image_model: str | None = None,
+    check_vision_input: bool = False,
+    vision_model: str | None = None,
 ) -> DiagnosticReport:
     normalized = normalize_base_url(base_url)
     model = model.strip()
@@ -393,6 +444,16 @@ def run_diagnostics(
             raise ValueError("Image model ID must be printable and no longer than 256 characters.")
     elif image_model is not None:
         raise ValueError("Image model ID can be used only with the image-generation check.")
+    if vision_model is not None:
+        vision_model = vision_model.strip()
+        if not vision_model:
+            raise ValueError("Vision model ID cannot be empty.")
+        if len(vision_model) > 256 or not vision_model.isprintable():
+            raise ValueError("Vision model ID must be printable and no longer than 256 characters.")
+        if not check_vision_input:
+            raise ValueError("Vision model ID can be used only with the vision-input check.")
+    elif check_vision_input:
+        vision_model = model
     body_options = {"max_output_tokens": max_output_tokens, "token_field": token_field}
     checks: list[CheckResult] = []
 
@@ -512,4 +573,52 @@ def run_diagnostics(
         else:
             checks.append(CheckResult("image generation", "fail", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
 
-    return DiagnosticReport(_safe_target(normalized), model, checks, image_model if check_image_generation else None)
+    if check_vision_input:
+        vision_model = vision_model or model
+        vision_body = _chat_body(
+            vision_model,
+            max_output_tokens=max_output_tokens if max_output_tokens is not None else 24,
+            token_field=token_field,
+        )
+        vision_body["messages"] = [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Read the four solid-color quadrants clockwise, starting at top-left. Reply with exactly four lowercase color names separated by commas.",
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": _vision_probe_data_url(), "detail": "low"},
+                },
+            ],
+        }]
+        result = _request_json(normalized, "/chat/completions", api_key, vision_body, timeout)
+        content = _message_content(result.payload)
+        if result.transport_error == "response-too-large" and result.status_code is not None and 200 <= result.status_code < 300:
+            checks.append(CheckResult(
+                "vision input",
+                "warn",
+                "HTTP succeeded, but the response exceeded the local safety limit; visual interpretation was not confirmed.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and _output_limited(result.payload):
+            checks.append(CheckResult("vision input", "warn", _OUTPUT_LIMIT_DETAIL, result.elapsed_ms))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and content:
+            matches = _matches_vision_probe(content)
+            checks.append(CheckResult(
+                "vision input",
+                "pass" if matches else "warn",
+                "The response matched the built-in color sequence." if matches else "A response arrived, but it did not match the built-in color sequence; visual interpretation was not confirmed.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300:
+            checks.append(CheckResult("vision input", "fail", "HTTP succeeded, but no chat text was found in the expected response shape.", result.elapsed_ms))
+        else:
+            checks.append(CheckResult("vision input", "fail", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+
+    return DiagnosticReport(
+        _safe_target(normalized), model, checks,
+        image_model if check_image_generation else None,
+        vision_model if check_vision_input else None,
+    )

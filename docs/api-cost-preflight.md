@@ -29,8 +29,10 @@ mock, not provider invoices or token measurements:
 |---|---:|---:|
 | Default chat only | 1 | 1 |
 | Chat + model list + streaming + stream options + JSON mode | 5 | 4 |
+| All checks, including image generation and vision input | 7 | 6 |
 
-The catalog is one GET. Each of the four generation checks is a separate POST.
+The catalog is one GET. Each selected generation check is a separate POST;
+vision input and image generation are opt-in checks.
 There is no automatic retry. Each selected generation check gets its own output
 cap; `--max-output-tokens` is not one shared allowance for the entire run.
 
@@ -41,9 +43,9 @@ python3 examples/count_demo_requests.py
 ```
 
 It starts an isolated loopback server on an available port, records actual HTTP
-methods for both modes, checks the counts and closes the server. It never reads
-your environment keys or contacts a provider. The fixed v0.3.0 wheel is unchanged;
-this new example is in current source.
+methods for each mode, checks the counts and closes the server. It never reads
+your environment keys or contacts a provider. An installed package may expose
+fewer checks than this source tree; use `llm-doctor --version` to identify it.
 
 ## Before running your own application
 

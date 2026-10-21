@@ -72,6 +72,24 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             self._send_json({"created": 0, "data": [{"b64_json": "synthetic-placeholder-not-image"}]})
             return
 
+        messages = request.get("messages")
+        content_parts = messages[0].get("content") if isinstance(messages, list) and messages and isinstance(messages[0], dict) else None
+        if isinstance(content_parts, list) and any(
+            isinstance(part, dict) and part.get("type") == "image_url"
+            for part in content_parts
+        ):
+            self._send_json({
+                "id": "chatcmpl-local-vision-demo",
+                "object": "chat.completion",
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "red, green, blue, yellow"},
+                    "finish_reason": "stop",
+                }],
+            })
+            return
+
         cap = request.get("max_completion_tokens", request.get("max_tokens", 0))
         limited = type(cap) is int and cap < self.minimum_output_tokens
 

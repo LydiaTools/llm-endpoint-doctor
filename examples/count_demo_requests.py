@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import io
 import sys
 import threading
 from http.server import ThreadingHTTPServer
@@ -23,7 +24,17 @@ def main() -> None:
             super().do_GET()
 
         def do_POST(self) -> None:
-            calls.append(f"POST {self.path}")
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length)
+            body = json.loads(raw)
+            messages = body.get("messages")
+            content = messages[0].get("content") if isinstance(messages, list) and messages and isinstance(messages[0], dict) else None
+            is_vision = isinstance(content, list) and any(
+                isinstance(part, dict) and part.get("type") == "image_url"
+                for part in content
+            )
+            calls.append(f"POST {self.path} [vision]" if is_vision else f"POST {self.path}")
+            self.rfile = io.BytesIO(raw)
             super().do_POST()
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), CountedHandler)
@@ -33,15 +44,19 @@ def main() -> None:
     try:
         base_url = f"http://127.0.0.1:{server.server_address[1]}/v1"
         for name, flags, expected in [
-            ("default", {}, (0, 1, 0)),
+            ("default", {}, (0, 1, 0, 0)),
             ("all-options", {
                 "check_model_list": True, "check_streaming": True,
                 "check_stream_options": True, "check_json_mode": True,
                 "check_image_generation": True, "image_model": "demo-image-model",
-            }, (1, 4, 1)),
+                "check_vision_input": True, "vision_model": "demo-vision-model",
+            }, (1, 4, 1, 1)),
             ("image-check", {
                 "check_image_generation": True, "image_model": "demo-image-model",
-            }, (0, 1, 1)),
+            }, (0, 1, 1, 0)),
+            ("vision-check", {
+                "check_vision_input": True, "vision_model": "demo-vision-model",
+            }, (0, 1, 0, 1)),
         ]:
             calls.clear()
             run_diagnostics(base_url=base_url, model="demo-model", **flags)
@@ -49,6 +64,7 @@ def main() -> None:
                 calls.count("GET /v1/models"),
                 calls.count("POST /v1/chat/completions"),
                 calls.count("POST /v1/images/generations"),
+                calls.count("POST /v1/chat/completions [vision]"),
             )
             if counts != expected:
                 raise RuntimeError(f"Unexpected request counts for {name}: {counts}")
@@ -58,6 +74,7 @@ def main() -> None:
                 "model_catalog_requests": counts[0],
                 "chat_generation_requests": counts[1],
                 "image_generation_requests": counts[2],
+                "vision_input_requests": counts[3],
             })
     finally:
         server.shutdown()
