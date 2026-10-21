@@ -33,6 +33,18 @@ class _State:
     vision_response: dict[str, object] = {
         "choices": [{"message": {"content": "red, green, blue, yellow"}, "finish_reason": "stop"}]
     }
+    tool_call_status = 200
+    tool_call_response: dict[str, object] = {
+        "choices": [{
+            "finish_reason": "tool_calls",
+            "message": {
+                "tool_calls": [{
+                    "type": "function",
+                    "function": {"name": "endpoint_doctor_probe", "arguments": '{"status":"ok"}'},
+                }]
+            },
+        }]
+    }
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -79,6 +91,9 @@ class _Handler(BaseHTTPRequestHandler):
             for part in content_parts
         ):
             self._send_json(_State.vision_response, _State.vision_status)
+            return
+        if body.get("tools"):
+            self._send_json(_State.tool_call_response, _State.tool_call_status)
             return
         if body.get("stream_options") and _State.reject_stream_options:
             self._send_json({"error": {"message": "unsupported stream options"}}, 400)
@@ -151,6 +166,18 @@ class CoreTests(unittest.TestCase):
         _State.vision_response = {
             "choices": [{"message": {"content": "red, green, blue, yellow"}, "finish_reason": "stop"}]
         }
+        _State.tool_call_status = 200
+        _State.tool_call_response = {
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {"name": "endpoint_doctor_probe", "arguments": '{"status":"ok"}'},
+                    }]
+                },
+            }]
+        }
 
     def test_base_url_normalization_and_rejections(self) -> None:
         self.assertEqual(normalize_base_url(" https://api.example.com/v1/ "), "https://api.example.com/v1")
@@ -193,6 +220,74 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(statuses["model catalog"], "pass")
         self.assertEqual(statuses["streaming"], "pass")
         self.assertEqual(statuses["JSON mode"], "pass")
+
+    def test_tool_calling_is_opt_in_and_validates_without_executing_function(self) -> None:
+        report = run_diagnostics(
+            self.base_url,
+            "fixture-model",
+            "tool-call-test-key",
+            check_tool_calling=True,
+        )
+        self.assertTrue(report.chat_ready)
+        self.assertTrue(report.tool_calling_ready)
+        self.assertEqual(len(_State.requests), 2)
+        request = _State.requests[1]
+        body = request["body"]
+        self.assertEqual(request["authorization"], "Bearer tool-call-test-key")
+        self.assertEqual(body["tools"][0]["function"]["name"], "endpoint_doctor_probe")
+        self.assertEqual(body["tool_choice"]["function"]["name"], "endpoint_doctor_probe")
+        self.assertEqual(body["max_tokens"], 128)
+        serialized = json.dumps(report.to_dict())
+        self.assertNotIn("tool-call-test-key", serialized)
+        self.assertNotIn('{"status":"ok"}', serialized)
+        self.assertIn("The function was not executed.", report.checks[-1].detail)
+
+    def test_tool_calling_warns_for_invalid_arguments_without_exposing_response(self) -> None:
+        _State.tool_call_response = {
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {"name": "endpoint_doctor_probe", "arguments": '{"status":"not-ok"}'},
+                    }]
+                },
+            }]
+        }
+        report = run_diagnostics(self.base_url, "fixture-model", check_tool_calling=True)
+        check = next(item for item in report.checks if item.name == "tool calling")
+        self.assertEqual(check.status, "warn")
+        self.assertIsNone(report.tool_calling_ready)
+        self.assertNotIn("not-ok", json.dumps(report.to_dict()))
+        self.assertEqual(len(_State.requests), 2)
+
+    def test_tool_calling_rejection_is_optional_warning_and_sanitized(self) -> None:
+        _State.tool_call_status = 400
+        _State.tool_call_response = {"error": {"message": "private-tool-provider-error"}}
+        report = run_diagnostics(self.base_url, "fixture-model", check_tool_calling=True)
+        check = next(item for item in report.checks if item.name == "tool calling")
+        self.assertEqual(check.status, "warn")
+        self.assertIsNone(report.tool_calling_ready)
+        self.assertNotIn("private-tool-provider-error", json.dumps(report.to_dict()))
+        self.assertEqual(len(_State.requests), 2)
+
+    def test_tool_calling_output_limit_warns_without_retrying(self) -> None:
+        _State.tool_call_response = {
+            "choices": [{
+                "finish_reason": "length",
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {"name": "endpoint_doctor_probe", "arguments": '{"status":"ok"}'},
+                    }]
+                },
+            }]
+        }
+        report = run_diagnostics(self.base_url, "fixture-model", check_tool_calling=True)
+        check = next(item for item in report.checks if item.name == "tool calling")
+        self.assertEqual(check.status, "warn")
+        self.assertIn("output limit", check.detail)
+        self.assertEqual(len(_State.requests), 2)
 
     def test_image_generation_is_opt_in_and_uses_one_separate_request(self) -> None:
         report = run_diagnostics(

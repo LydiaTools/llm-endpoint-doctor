@@ -29,10 +29,10 @@ mock, not provider invoices or token measurements:
 |---|---:|---:|
 | Default chat only | 1 | 1 |
 | Chat + model list + streaming + stream options + JSON mode | 5 | 4 |
-| All checks, including image generation and vision input | 7 | 6 |
+| All checks, including tool calling, image generation and vision input | 8 | 7 |
 
 The catalog is one GET. Each selected generation check is a separate POST;
-vision input and image generation are opt-in checks.
+tool calling, vision input and image generation are opt-in checks.
 There is no automatic retry. Each selected generation check gets its own output
 cap; `--max-output-tokens` is not one shared allowance for the entire run.
 

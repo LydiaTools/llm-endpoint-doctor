@@ -1,8 +1,8 @@
 # LLM Endpoint Doctor｜大模型接口体检
 
-**把 OpenAI 兼容 API 接进应用之前，先检查对话、看图和生图接口。**
+**把 OpenAI 兼容 API 接进应用之前，先检查对话、工具调用、看图和生图接口。**
 
-运行一条本地命令，检查 API 地址、模型 ID、鉴权和第一次对话响应。需要时再额外检查模型列表、流式输出、JSON 模式、看图输入或单独的图片生成模型。
+运行一条本地命令，检查 API 地址、模型 ID、鉴权和第一次对话响应。需要时再额外检查模型列表、流式输出、JSON 模式、工具调用、看图输入或单独的图片生成模型。
 
 [English README](README.md) · [反馈问题](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
@@ -31,7 +31,7 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id
 
 API Key 会通过隐藏输入提示读取。无 Key 接口直接回车。默认只发送 **一条**聊天补全请求。
 
-默认输出预算刻意保持很小：普通聊天12 token，JSON检查和看图检查24 token。使用思考型模型时，可显式增加预算，例如 `--max-output-tokens 1024`；服务商要求新参数名时，再选 `--token-field max_completion_tokens`。设置会应用到每个已选生成检查，不增加请求或自动重试。`finish_reason=length`会明确标为截断，即使已有部分文字、合法JSON、用量或SSE的`[DONE]`也不算该项完整通过。[无需Key的复现步骤](docs/free-api-setup.zh-CN.md#不用key复现输出预算问题)。
+默认输出预算刻意保持很小：普通聊天12 token，JSON检查和看图检查24 token，工具调用检查128 token。使用思考型模型时，可显式增加预算，例如 `--max-output-tokens 1024`；服务商要求新参数名时，再选 `--token-field max_completion_tokens`。设置会应用到每个已选生成检查，不增加请求或自动重试。`finish_reason=length`会明确标为截断，即使已有部分文字、合法JSON、用量或SSE的`[DONE]`也不算该项完整通过。[无需Key的复现步骤](docs/free-api-setup.zh-CN.md#不用key复现输出预算问题)。
 
 ```text
 LLM Endpoint Doctor
@@ -66,6 +66,7 @@ llm-doctor \
   --check-image-generation \
   --image-model demo-image-model \
   --check-vision-input \
+  --check-tool-calling \
   --vision-model demo-vision-model
 ```
 
@@ -77,6 +78,7 @@ llm-doctor \
 [PASS] JSON mode — 返回了 JSON 对象。
 [PASS] image generation — 收到 Base64 或 HTTP(S) 图片 URL 形式的图片结果；未下载或保存媒体文件。
 [PASS] vision input — 返回内容匹配内置颜色顺序。
+[PASS] tool calling — 返回一条名称和参数结构都符合预期的函数调用；没有执行该函数。
 
 Basic chat: READY
 ```
@@ -93,11 +95,11 @@ python3 examples/replay_tool_stream.py
 
 六组原创离线对照会接受「只在首个增量发送名称／ID」及交错的多次调用，拒绝完整调用身份缺失、JSON 不完整及输出上限中断。即使参数 JSON 完整，`finish_reason=length` 也不会被当成已完成的工具轮次。反例另展示了为何逐块强制要求名称和 ID 会误拒正常数据。
 
-也可用 `--file capture.sse` 检查本机捕获；只输出判断、固定原因与调用数量，不执行工具。[实际对照、输出与中英文排查步骤](docs/tool-stream-replay.md)。这是当前源码中的补充案例，固定 v0.2.0 发行包保持原样；没有新增真实服务商工具调用探针。
+也可用 `--file capture.sse` 检查本机捕获；只输出判断、固定原因与调用数量，不执行工具。[实际对照、输出与中英文排查步骤](docs/tool-stream-replay.md)。下面的可选 `--check-tool-calling` 会单独检查真实接口是否返回符合预期的函数调用结构；不会执行函数，也不检查流式工具调用处理。
 
 ## 可选检查
 
-每项已选择的检查都会增加一次请求。流式、stream options、JSON、生图和看图分别增加一次生成请求；模型列表检查增加一次 GET。
+每项已选择的检查都会增加一次请求。流式、stream options、JSON、工具调用、生图和看图分别增加一次生成请求；模型列表检查增加一次 GET。
 
 ```bash
 llm-doctor \
@@ -130,6 +132,14 @@ llm-doctor \
 
 只有回复匹配预期的顺时针颜色顺序才通过；不匹配会标记为“尚未确认”。这是一项冒烟检查，不是准确率评测，也不能证明视觉能力质量。服务商会收到这条图片请求，并可能计费。图片在内存中生成，不从网址抓取，也不写入磁盘。[OpenAI 看图输入格式](https://developers.openai.com/api/docs/guides/images-vision)。
 
+## 检查工具调用
+
+```bash
+llm-doctor --base-url https://api.example.com/v1 --model your-model-id --check-tool-calling
+```
+
+该检查会额外发送一次带单个必选函数定义的 `POST /chat/completions`。只有接口返回一条 `tool_calls`，且函数名称和 JSON 参数都符合预期时才通过。不会执行函数。它只确认所选模型的一种响应结构，不是语义能力评测，也不保证所有 Schema、提示词、流式消费者或后续请求都可用。服务商可能计量该请求或收费。
+
 ## 非交互模式与 CI
 
 无 Key 接口可以显式跳过输入提示：
@@ -158,6 +168,7 @@ CI 中可以从环境变量读取 Key，避免把它放进命令行参数：
 - **流式输出（可选）：** 检查是否收到 server-sent events 结束标记。
 - **流式选项（可选）：** 在流式请求中发送 `stream_options: {"include_usage": true}`，检查端点是否接受该参数并返回用量信息。普通流式可用但不兼容此客户端选项时，这项检查会给出提醒。
 - **JSON 模式（可选）：** 请求返回 JSON 对象，并检查内容能否解析为对象。
+- **工具调用（可选）：** 使用 `--check-tool-calling` 时，额外发送一次带固定函数 Schema 的聊天请求，检查是否返回名称和参数都符合预期的函数调用；不会执行函数，也不评价语义可靠性。
 - **图片生成（可选）：** 使用 `--check-image-generation --image-model ID` 时，向 `/images/generations` 额外发送一次固定提示词，检查是否返回非空 `data[].b64_json` 或 HTTP(S) `data[].url`。不会抓取 URL、解码或保存图片字节，也不评价图片质量。
 - **看图输入（可选）：** 使用 `--check-vision-input` 时，额外发送一次含内置合成 PNG data URL 的聊天请求，并检查回复是否匹配四个颜色象限；不匹配时保持未确认。这不是视觉质量评测。
 - **常见故障：** 区分鉴权/权限错误、接口或模型不存在、速率限制、服务错误、超时和 TLS 错误，不输出服务商的原始错误正文。
@@ -174,6 +185,7 @@ CI 中可以从环境变量读取 Key，避免把它放进命令行参数：
 - 接口服务商会收到测试请求，并可能按自己的规则计量。可选检查会增加请求次数，只在需要时启用。
 - 图片检查会向接口发送固定提示词并可能产生图片生成费用；只请求一张图片且不会保存返回图片。超过大小上限的响应不会被解析。
 - 看图检查会向接口发送一张内置合成图片，可能产生服务商费用。图片在内存中生成且不会保存；不会重复或跟进发送请求。
+- 工具调用检查会向接口发送固定函数 Schema 和提示词；不会执行返回的函数或保存回复，也不会重复发送。
 
 ## 开发
 

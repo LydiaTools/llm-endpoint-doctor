@@ -14,8 +14,8 @@ from .core import DiagnosticReport, normalize_base_url, run_diagnostics
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-doctor",
-        description="Check OpenAI-compatible chat and optional vision/image-generation endpoints.",
-        epilog="The default run sends one chat request. Each selected check sends one extra request. Vision and image checks may incur provider charges.",
+        description="Check OpenAI-compatible chat and optional model capabilities.",
+        epilog="The default run sends one chat request. Each selected check sends one extra request. Tool-calling, vision and image checks send provider requests and may incur charges or use free-tier quota.",
     )
     parser.add_argument("--base-url", required=True, help="API base URL, such as https://api.example.com/v1")
     parser.add_argument("--model", required=True, help="Exact model ID or provider alias to test")
@@ -30,6 +30,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--image-model", help="Exact image model ID; required with --check-image-generation")
     parser.add_argument("--check-vision-input", action="store_true", help="Also send one chat request with a built-in synthetic PNG; may incur provider charges")
     parser.add_argument("--vision-model", help="Model ID for the vision check (default: --model); only with --check-vision-input")
+    parser.add_argument("--check-tool-calling", action="store_true", help="Also send one function-calling request and validate its returned structure; the function is never executed")
     key_group = parser.add_mutually_exclusive_group()
     key_group.add_argument("--api-key-env", metavar="NAME", help="Read the API key from an environment variable")
     key_group.add_argument("--no-prompt", action="store_true", help="Skip the hidden key prompt (for keyless endpoints)")
@@ -117,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
             image_model=args.image_model,
             check_vision_input=args.check_vision_input,
             vision_model=args.vision_model,
+            check_tool_calling=args.check_tool_calling,
         )
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.", file=sys.stderr)

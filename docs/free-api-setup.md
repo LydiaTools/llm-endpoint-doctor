@@ -56,7 +56,7 @@ The [Free Models Router](https://openrouter.ai/openrouter/free) selects among av
 | HTTP 429 | Inspect the provider's account quota and limits; the doctor does not retry. |
 | `finish_reason=length` | The generation was truncated. Review the output/context budget; reasoning may consume tokens before an answer. Explicitly choose a different cap if appropriate. |
 
-`--max-output-tokens` accepts 1–8192. `--token-field` sends exactly one of `max_tokens` or `max_completion_tokens`; it does not infer a field from the model name. The default remains 12 tokens, or 24 for JSON mode. A larger cap can use more of a provider's quota or incur cost on a paid route. No automatic budget increase or retry occurs.
+`--max-output-tokens` accepts 1–8192. `--token-field` sends exactly one of `max_tokens` or `max_completion_tokens`; it does not infer a field from the model name. Defaults are 12 tokens for chat, 24 for JSON or vision, and 128 for tool-calling checks. A larger cap can use more of a provider's quota or incur cost on a paid route. No automatic budget increase or retry occurs.
 
 ## Reproduce the output-budget case without a key
 

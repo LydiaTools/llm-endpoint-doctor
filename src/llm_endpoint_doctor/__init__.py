@@ -1,3 +1,3 @@
-"""Local-first diagnostics for OpenAI-compatible chat, vision, and image endpoints."""
+"""Local-first diagnostics for OpenAI-compatible chat and model capabilities."""
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"

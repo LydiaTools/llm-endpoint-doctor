@@ -1,8 +1,8 @@
 # LLM Endpoint Doctor
 
-**Check chat, vision input, and image generation before you wire an OpenAI-compatible API into your app.**
+**Check chat, tool calling, vision input, and image generation before you wire an OpenAI-compatible API into your app.**
 
-One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, vision input, or a separate image-generation model only when you need them.
+One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, tool calling, vision input, or a separate image-generation model only when you need them.
 
 [简体中文](README.zh-CN.md) · [Report a bug](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
@@ -31,7 +31,7 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id
 
 The API key is requested through a hidden terminal prompt. Press Enter for a keyless endpoint. The default run sends **one** chat-completion request.
 
-The default output cap is deliberately small: 12 tokens for ordinary chat and 24 for JSON or the vision check. For a reasoning model, select a budget explicitly, for example `--max-output-tokens 1024`. If your provider requires the newer field, also use `--token-field max_completion_tokens`. Both apply to every selected generation check; neither adds a retry or a request. A response ending with `finish_reason=length` is reported as truncated, even if it includes text, valid JSON, usage or an SSE `[DONE]` marker. [Keyless, reproducible example](docs/free-api-setup.md#reproduce-the-output-budget-case-without-a-key).
+The default output cap is deliberately small: 12 tokens for ordinary chat, 24 for JSON or vision, and 128 for tool calling. For a reasoning model, select a budget explicitly, for example `--max-output-tokens 1024`. If your provider requires the newer field, also use `--token-field max_completion_tokens`. Both apply to every selected generation check; neither adds a retry or a request. A response ending with `finish_reason=length` is reported as truncated, even if it includes text, valid JSON, usage or an SSE `[DONE]` marker. [Keyless, reproducible example](docs/free-api-setup.md#reproduce-the-output-budget-case-without-a-key).
 
 ```text
 LLM Endpoint Doctor
@@ -66,6 +66,7 @@ llm-doctor \
   --check-image-generation \
   --image-model demo-image-model \
   --check-vision-input \
+  --check-tool-calling \
   --vision-model demo-vision-model
 ```
 
@@ -77,6 +78,7 @@ llm-doctor \
 [PASS] JSON mode — Returned a JSON object.
 [PASS] image generation — Returned an image result in base64 or HTTP(S) URL form; the media was not downloaded or saved.
 [PASS] vision input — The response matched the built-in color sequence.
+[PASS] tool calling — Returned one valid function call with the expected argument shape. The function was not executed.
 
 Basic chat: READY
 ```
@@ -93,11 +95,11 @@ python3 examples/replay_tool_stream.py
 
 It accepts call metadata sent only in the first delta and keeps interleaved arguments with the right call. It rejects missing complete-call identity, unfinished JSON and a turn ended by the output limit—even when that turn's argument JSON is valid. A labeled counterexample shows why requiring the name and ID in every delta rejects a valid stream.
 
-You can also inspect one local capture with `--file capture.sse`; output contains only acceptance, a fixed reason and the call count. No tool is executed. [Actual controls, output and bilingual troubleshooting guide](docs/tool-stream-replay.md). These examples are in current source; the fixed v0.2.0 release is unchanged. They do not add a live provider/tool-calling probe to `llm-doctor`.
+You can also inspect one local capture with `--file capture.sse`; output contains only acceptance, a fixed reason and the call count. No tool is executed. [Actual controls, output and bilingual troubleshooting guide](docs/tool-stream-replay.md). The optional `--check-tool-calling` probe below separately checks a live endpoint's returned function-call shape; it does not execute that function or test streamed tool-call handling.
 
 ## Optional checks
 
-Each selected check adds one request. Streaming, stream-options, JSON mode, image generation, and vision input each send one additional generation request; the model catalog check adds one GET.
+Each selected check adds one request. Streaming, stream-options, JSON mode, tool calling, image generation, and vision input each send one additional generation request; the model catalog check adds one GET.
 
 ```bash
 llm-doctor \
@@ -107,6 +109,7 @@ llm-doctor \
   --check-streaming \
   --check-stream-options \
   --check-json-mode \
+  --check-tool-calling \
   --json-report endpoint-report.json
 ```
 
@@ -129,6 +132,10 @@ This sends one fixed prompt (`A simple blue circle centered on a plain white bac
 Run `llm-doctor --check-vision-input` to send one extra `POST /chat/completions` containing a small built-in synthetic PNG as a Base64 data URL. The image has four colored quadrants. By default, the check uses the chat model; `--vision-model` selects a different one.
 
 A pass means the response matched the expected clockwise color sequence. A response that does not match is reported as unconfirmed. This is a smoke test, not an accuracy benchmark or proof of vision quality. The provider receives the image request and may charge for it. The PNG is generated in memory, not fetched from a URL, and not written to disk. [OpenAI vision input format](https://developers.openai.com/api/docs/guides/images-vision).
+
+## Check tool calling
+
+Run `llm-doctor --check-tool-calling` to send one extra `POST /chat/completions` with a single required function definition. The check passes only when the endpoint returns one `tool_calls` result with the expected function name and valid JSON arguments. The function is never executed. This confirms one response shape for the selected model; it is not a semantic tool-use benchmark or a guarantee that every schema, prompt, stream consumer, or future request will work. The request can use provider quota or incur a charge.
 
 ## Non-interactive and CI use
 
@@ -160,6 +167,7 @@ If the named environment variable is missing or empty, the command stops before 
 - **JSON mode (optional):** Requests a JSON object and checks that the returned content parses as an object.
 - **Image generation (optional):** With `--check-image-generation --image-model ID`, sends one additional fixed-prompt request to `/images/generations` and checks for a non-empty `data[].b64_json` or HTTP(S) `data[].url` result. It does not fetch URL results, decode or save image bytes, or judge image quality.
 - **Vision input (optional):** With `--check-vision-input`, sends one additional chat request with a built-in synthetic PNG data URL. It checks the response against four expected color quadrants; a mismatch stays unconfirmed. This is not a vision-quality benchmark.
+- **Tool calling (optional):** With `--check-tool-calling`, sends one additional chat request with a fixed function schema. It checks for one function call with the expected name and JSON arguments; it never executes the function and does not grade semantic reliability.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
 
 The tool makes no automatic retries. It does not grade answer quality, benchmark providers, guarantee compatibility with every client, or determine whether a provider's free tier will remain available.
@@ -174,6 +182,7 @@ The tool makes no automatic retries. It does not grade answer quality, benchmark
 - The endpoint provider receives the test request and may count it against its own limits. Optional checks send extra requests; use them only when needed.
 - The image check sends its fixed prompt to the endpoint and may incur image-generation charges. It requests one image and does not save the returned image; oversized responses are not parsed.
 - The vision check sends one built-in synthetic image to the endpoint and may incur provider charges. The image is generated in memory and is not saved. It makes no repeated or follow-up requests.
+- The tool-calling check sends one fixed function schema and prompt to the endpoint. It does not execute the returned function or save the response, and it makes no repeated or follow-up request.
 
 ## Development
 

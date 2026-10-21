@@ -58,6 +58,13 @@ class DiagnosticReport:
             return None
         return check.status == "pass"
 
+    @property
+    def tool_calling_ready(self) -> bool | None:
+        check = next((c for c in self.checks if c.name == "tool calling"), None)
+        if check is None or check.status == "warn":
+            return None
+        return check.status == "pass"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "tool": "llm-endpoint-doctor",
@@ -69,6 +76,7 @@ class DiagnosticReport:
             "image_generation_ready": self.image_generation_ready,
             "vision_model": self.vision_model,
             "vision_input_ready": self.vision_input_ready,
+            "tool_calling_ready": self.tool_calling_ready,
             "checks": [c.to_dict() for c in self.checks],
         }
 
@@ -344,6 +352,62 @@ def _chat_body(
     return body
 
 
+def _tool_call_body(
+    model: str, *, max_output_tokens: int | None = None, token_field: str = "max_tokens"
+) -> dict[str, Any]:
+    return {
+        "model": model,
+        "messages": [{"role": "user", "content": "Call endpoint_doctor_probe now."}],
+        token_field: max_output_tokens if max_output_tokens is not None else 128,
+        "stream": False,
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "endpoint_doctor_probe",
+                "description": "Return the requested status value.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"status": {"type": "string", "enum": ["ok"]}},
+                    "required": ["status"],
+                    "additionalProperties": False,
+                },
+            },
+        }],
+        "tool_choice": {
+            "type": "function",
+            "function": {"name": "endpoint_doctor_probe"},
+        },
+    }
+
+
+def _tool_call_is_valid(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return False
+    choice = choices[0]
+    if choice.get("finish_reason") != "tool_calls":
+        return False
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        return False
+    tool_calls = message.get("tool_calls")
+    if not isinstance(tool_calls, list) or len(tool_calls) != 1 or not isinstance(tool_calls[0], dict):
+        return False
+    function = tool_calls[0].get("function")
+    if not isinstance(function, dict) or function.get("name") != "endpoint_doctor_probe":
+        return False
+    arguments = function.get("arguments")
+    if not isinstance(arguments, str):
+        return False
+    try:
+        parsed = json.loads(arguments)
+    except json.JSONDecodeError:
+        return False
+    return parsed == {"status": "ok"}
+
+
 def _request_stream(
     base_url: str, api_key: str, body: dict[str, Any], timeout: float
 ) -> _Response:
@@ -421,6 +485,7 @@ def run_diagnostics(
     image_model: str | None = None,
     check_vision_input: bool = False,
     vision_model: str | None = None,
+    check_tool_calling: bool = False,
 ) -> DiagnosticReport:
     normalized = normalize_base_url(base_url)
     model = model.strip()
@@ -616,6 +681,38 @@ def run_diagnostics(
             checks.append(CheckResult("vision input", "fail", "HTTP succeeded, but no chat text was found in the expected response shape.", result.elapsed_ms))
         else:
             checks.append(CheckResult("vision input", "fail", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+
+    if check_tool_calling:
+        result = _request_json(
+            normalized,
+            "/chat/completions",
+            api_key,
+            _tool_call_body(model, max_output_tokens=max_output_tokens, token_field=token_field),
+            timeout,
+        )
+        if result.status_code is not None and 200 <= result.status_code < 300 and _output_limited(result.payload):
+            checks.append(CheckResult(
+                "tool calling",
+                "warn",
+                "The response hit the output limit before tool-call compatibility could be confirmed.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and _tool_call_is_valid(result.payload):
+            checks.append(CheckResult(
+                "tool calling",
+                "pass",
+                "Returned one valid function call with the expected argument shape. The function was not executed.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300:
+            checks.append(CheckResult(
+                "tool calling",
+                "warn",
+                "HTTP succeeded, but a valid function call with the expected name and arguments was not confirmed.",
+                result.elapsed_ms,
+            ))
+        else:
+            checks.append(CheckResult("tool calling", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
 
     return DiagnosticReport(
         _safe_target(normalized), model, checks,

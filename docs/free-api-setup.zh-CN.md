@@ -56,7 +56,7 @@ llm-doctor --base-url https://openrouter.ai/api/v1 --model openrouter/free --max
 | HTTP 429 | 看服务商账号额度与限流；本工具不自动重试。 |
 | `finish_reason=length` | 生成被截断。检查输出/上下文预算，思考可能先消耗token；需要时手动选择另一预算。 |
 
-`--max-output-tokens`范围1–8192；`--token-field`只发送`max_tokens`或`max_completion_tokens`中的一个，不按模型名猜测。默认仍为普通12、JSON检查24 token。更高上限可能多消耗额度，付费路由可能收费；工具不会自动加预算或重试。
+`--max-output-tokens`范围1–8192；`--token-field`只发送`max_tokens`或`max_completion_tokens`中的一个，不按模型名猜测。默认普通聊天12 token、JSON和看图检查24 token、工具调用检查128 token。更高上限可能多消耗额度，付费路由可能收费；工具不会自动加预算或重试。
 
 ## 不用Key复现输出预算问题
 

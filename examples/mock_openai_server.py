@@ -90,6 +90,29 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if request.get("tools"):
+            self._send_json({
+                "id": "chatcmpl-local-tool-demo",
+                "object": "chat.completion",
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [{
+                            "id": "call_local_probe",
+                            "type": "function",
+                            "function": {
+                                "name": "endpoint_doctor_probe",
+                                "arguments": '{"status":"ok"}',
+                            },
+                        }],
+                    },
+                    "finish_reason": "tool_calls",
+                }],
+            })
+            return
+
         cap = request.get("max_completion_tokens", request.get("max_tokens", 0))
         limited = type(cap) is int and cap < self.minimum_output_tokens
 
