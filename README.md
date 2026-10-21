@@ -1,8 +1,8 @@
 # LLM Endpoint Doctor
 
-**Find out whether an OpenAI-compatible endpoint works before you wire it into your app.**
+**Check chat and image endpoints before you wire an OpenAI-compatible API into your app.**
 
-One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, and JSON mode only when you need them.
+One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, or a separate image-generation model only when you need them.
 
 [简体中文](README.zh-CN.md) · [Report a bug](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
@@ -62,7 +62,9 @@ llm-doctor \
   --check-model-list \
   --check-streaming \
   --check-stream-options \
-  --check-json-mode
+  --check-json-mode \
+  --check-image-generation \
+  --image-model demo-image-model
 ```
 
 ```text
@@ -71,11 +73,12 @@ llm-doctor \
 [PASS] streaming — Server sent an SSE completion marker.
 [PASS] stream options — SSE completed and included usage metadata when requested.
 [PASS] JSON mode — Returned a JSON object.
+[PASS] image generation — Returned an image result in base64 or HTTP(S) URL form; the media was not downloaded or saved.
 
 Basic chat: READY
 ```
 
-The fixture binds to loopback and returns fixed responses. It demonstrates the request and report flow; it does not test an external provider. Stop it with `Ctrl+C`.
+The fixture binds to loopback and returns fixed responses. Its image route returns a synthetic placeholder, not real image bytes; it demonstrates the request and report flow without testing an external provider. Stop it with `Ctrl+C`.
 
 ## Chat works, but streamed tool calls fail?
 
@@ -106,6 +109,18 @@ llm-doctor \
 
 The JSON report is created only if the destination file does not already exist. It includes the target host, model ID, check results, and timings. It excludes the API key, URL path, prompts, and response content.
 
+To check a separate image model, add one explicit image-generation request:
+
+```bash
+llm-doctor \
+  --base-url https://api.example.com/v1 \
+  --model your-chat-model \
+  --check-image-generation \
+  --image-model your-image-model
+```
+
+This sends one fixed prompt (`A simple blue circle centered on a plain white background.`) to `POST /images/generations` with `n=1`. It uses the same `--base-url` and API key as the chat check, but the image model may differ. Image generation can incur provider charges. The tool checks for a non-empty base64 image result or an HTTP(S) result URL; it does not download or save the image. The response is held only long enough to inspect it, up to a 32 MB safety limit. [OpenAI image-generation API reference](https://developers.openai.com/api/reference/resources/images/methods/generate).
+
 ## Non-interactive and CI use
 
 For a keyless endpoint, skip the prompt explicitly:
@@ -134,6 +149,7 @@ If the named environment variable is missing or empty, the command stops before 
 - **Streaming (optional):** Checks for a server-sent events completion marker.
 - **Stream options (optional):** Sends `stream_options: {"include_usage": true}` with a streaming request and checks whether usage metadata arrives. This can reveal endpoints that accept ordinary streaming but reject or ignore this client option.
 - **JSON mode (optional):** Requests a JSON object and checks that the returned content parses as an object.
+- **Image generation (optional):** With `--check-image-generation --image-model ID`, sends one additional fixed-prompt request to `/images/generations` and checks for a non-empty `data[].b64_json` or HTTP(S) `data[].url` result. It does not fetch URL results, decode or save image bytes, or judge image quality.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
 
 The tool makes no automatic retries. It does not grade answer quality, benchmark providers, guarantee compatibility with every client, or determine whether a provider's free tier will remain available.
@@ -146,6 +162,7 @@ The tool makes no automatic retries. It does not grade answer quality, benchmark
 - Remote endpoints must use HTTPS. Plain HTTP is allowed only for localhost tests.
 - Query strings, URL-embedded credentials, and cross-origin redirects are rejected so a key is not forwarded to another host.
 - The endpoint provider receives the test request and may count it against its own limits. Optional checks send extra requests; use them only when needed.
+- The image check sends its fixed prompt to the endpoint and may incur image-generation charges. It requests one image and does not save the returned image; oversized responses are not parsed.
 
 ## Development
 

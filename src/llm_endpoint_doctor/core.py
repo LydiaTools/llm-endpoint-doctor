@@ -13,6 +13,9 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from . import __version__
 
+_MAX_JSON_RESPONSE_BYTES = 1_000_000
+_MAX_IMAGE_RESPONSE_BYTES = 32_000_000
+
 
 @dataclass
 class CheckResult:
@@ -30,10 +33,18 @@ class DiagnosticReport:
     target: str
     model: str
     checks: list[CheckResult]
+    image_model: str | None = None
 
     @property
     def chat_ready(self) -> bool:
         return any(c.name == "chat completion" and c.status == "pass" for c in self.checks)
+
+    @property
+    def image_generation_ready(self) -> bool | None:
+        check = next((c for c in self.checks if c.name == "image generation"), None)
+        if check is None or check.status == "warn":
+            return None
+        return check.status == "pass"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,6 +53,8 @@ class DiagnosticReport:
             "target": self.target,
             "model": self.model,
             "chat_ready": self.chat_ready,
+            "image_model": self.image_model,
+            "image_generation_ready": self.image_generation_ready,
             "checks": [c.to_dict() for c in self.checks],
         }
 
@@ -141,6 +154,8 @@ def _error_detail(status_code: int | None, transport_error: str | None) -> str:
         return "Provider rate limit returned 429; the request did not complete."
     if status_code is not None and status_code >= 500:
         return f"Provider returned server error {status_code}."
+    if transport_error == "response-too-large" and (status_code is None or 200 <= status_code < 300):
+        return "Response exceeded the local safety limit; the response body was omitted."
     if status_code is not None:
         return f"Provider returned HTTP {status_code}. Response bodies are omitted from reports."
     if transport_error == "timeout":
@@ -156,6 +171,7 @@ def _request_json(
     api_key: str,
     body: dict[str, Any] | None,
     timeout: float,
+    max_response_bytes: int = _MAX_JSON_RESPONSE_BYTES,
 ) -> _Response:
     parsed = urlsplit(base_url)
     origin = _origin_key(parsed)
@@ -170,10 +186,10 @@ def _request_json(
     start = time.monotonic()
     try:
         with opener.open(request, timeout=timeout) as response:
-            raw = response.read(1_000_001)
+            raw = response.read(max_response_bytes + 1)
             status_code = response.status
     except HTTPError as exc:
-        raw = exc.read(1_000_001)
+        raw = exc.read(max_response_bytes + 1)
         status_code = exc.code
     except (TimeoutError, socket.timeout):
         return _Response(None, round((time.monotonic() - start) * 1000), transport_error="timeout")
@@ -189,7 +205,7 @@ def _request_json(
     except OSError:
         return _Response(None, round((time.monotonic() - start) * 1000), transport_error="network")
     elapsed = round((time.monotonic() - start) * 1000)
-    if len(raw) > 1_000_000:
+    if len(raw) > max_response_bytes:
         return _Response(status_code, elapsed, transport_error="response-too-large")
     try:
         payload = json.loads(raw.decode("utf-8"))
@@ -215,6 +231,33 @@ def _message_content(payload: Any) -> str | None:
         return None
     content = message.get("content")
     return content if isinstance(content, str) else None
+
+
+def _has_image_result(payload: Any) -> bool:
+    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+        return False
+    for item in payload["data"]:
+        if not isinstance(item, dict):
+            continue
+        encoded = item.get("b64_json")
+        if isinstance(encoded, str) and encoded.strip():
+            return True
+        url = item.get("url")
+        if isinstance(url, str):
+            try:
+                parsed = urlsplit(url)
+                port = parsed.port
+            except ValueError:
+                continue
+            if (
+                parsed.scheme in {"http", "https"}
+                and parsed.hostname
+                and parsed.username is None
+                and parsed.password is None
+                and (port is None or 1 <= port <= 65535)
+            ):
+                return True
+    return False
 
 
 _OUTPUT_LIMIT_DETAIL = (
@@ -325,6 +368,8 @@ def run_diagnostics(
     check_stream_options: bool = False,
     max_output_tokens: int | None = None,
     token_field: str = "max_tokens",
+    check_image_generation: bool = False,
+    image_model: str | None = None,
 ) -> DiagnosticReport:
     normalized = normalize_base_url(base_url)
     model = model.strip()
@@ -340,6 +385,14 @@ def run_diagnostics(
         raise ValueError("Output token limit must be an integer between 1 and 8192.")
     if token_field not in ("max_tokens", "max_completion_tokens"):
         raise ValueError("Token field must be max_tokens or max_completion_tokens.")
+    if check_image_generation:
+        if image_model is None or not image_model.strip():
+            raise ValueError("An image model ID is required for the image-generation check.")
+        image_model = image_model.strip()
+        if len(image_model) > 256 or not image_model.isprintable():
+            raise ValueError("Image model ID must be printable and no longer than 256 characters.")
+    elif image_model is not None:
+        raise ValueError("Image model ID can be used only with the image-generation check.")
     body_options = {"max_output_tokens": max_output_tokens, "token_field": token_field}
     checks: list[CheckResult] = []
 
@@ -422,4 +475,41 @@ def run_diagnostics(
         else:
             checks.append(CheckResult("JSON mode", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
 
-    return DiagnosticReport(_safe_target(normalized), model, checks)
+    if check_image_generation:
+        result = _request_json(
+            normalized,
+            "/images/generations",
+            api_key,
+            {
+                "model": image_model,
+                "prompt": "A simple blue circle centered on a plain white background.",
+                "n": 1,
+            },
+            timeout,
+            max_response_bytes=_MAX_IMAGE_RESPONSE_BYTES,
+        )
+        if result.transport_error == "response-too-large" and result.status_code is not None and 200 <= result.status_code < 300:
+            checks.append(CheckResult(
+                "image generation",
+                "warn",
+                "HTTP succeeded, but the response exceeded the local safety limit; image compatibility was not confirmed.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and _has_image_result(result.payload):
+            checks.append(CheckResult(
+                "image generation",
+                "pass",
+                "Returned an image result in base64 or HTTP(S) URL form; the media was not downloaded or saved.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300:
+            checks.append(CheckResult(
+                "image generation",
+                "fail",
+                "HTTP succeeded, but no non-empty data[].b64_json or HTTP(S) data[].url result was found.",
+                result.elapsed_ms,
+            ))
+        else:
+            checks.append(CheckResult("image generation", "fail", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+
+    return DiagnosticReport(_safe_target(normalized), model, checks, image_model if check_image_generation else None)

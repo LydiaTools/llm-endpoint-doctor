@@ -14,8 +14,8 @@ from .core import DiagnosticReport, normalize_base_url, run_diagnostics
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-doctor",
-        description="Check whether an OpenAI-compatible endpoint can answer one chat request.",
-        epilog="The default run sends one chat-completion request. Optional checks send extra requests.",
+        description="Check OpenAI-compatible chat and optional image-generation endpoints.",
+        epilog="The default run sends one chat request. Each selected check sends one extra request; image generation may incur provider charges.",
     )
     parser.add_argument("--base-url", required=True, help="API base URL, such as https://api.example.com/v1")
     parser.add_argument("--model", required=True, help="Exact model ID or provider alias to test")
@@ -26,6 +26,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-streaming", action="store_true", help="Also test SSE streaming (one extra generation)")
     parser.add_argument("--check-stream-options", action="store_true", help="Also test stream_options.include_usage (one extra generation)")
     parser.add_argument("--check-json-mode", action="store_true", help="Also test JSON mode (one extra generation)")
+    parser.add_argument("--check-image-generation", action="store_true", help="Also send one image request to /images/generations using the same base URL and key; may incur provider charges")
+    parser.add_argument("--image-model", help="Exact image model ID; required with --check-image-generation")
     key_group = parser.add_mutually_exclusive_group()
     key_group.add_argument("--api-key-env", metavar="NAME", help="Read the API key from an environment variable")
     key_group.add_argument("--no-prompt", action="store_true", help="Skip the hidden key prompt (for keyless endpoints)")
@@ -38,6 +40,8 @@ def _print_report(report: DiagnosticReport) -> None:
     print("LLM Endpoint Doctor")
     print(f"Target host: {report.target}")
     print(f"Model: {report.model}")
+    if report.image_model is not None:
+        print(f"Image model: {report.image_model}")
     print("")
     for check in report.checks:
         label = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}.get(check.status, check.status.upper())
@@ -61,6 +65,16 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(exc))
     if not args.model.strip() or len(args.model.strip()) > 256 or not args.model.strip().isprintable():
         parser.error("--model must be printable and between 1 and 256 characters")
+    if args.check_image_generation and not args.image_model:
+        parser.error("--image-model is required with --check-image-generation")
+    if not args.check_image_generation and args.image_model is not None:
+        parser.error("--image-model can only be used with --check-image-generation")
+    if args.image_model is not None and (
+        not args.image_model.strip()
+        or len(args.image_model.strip()) > 256
+        or not args.image_model.strip().isprintable()
+    ):
+        parser.error("--image-model must be printable and between 1 and 256 characters")
     if args.json_report:
         if args.json_report.exists():
             parser.error(f"report file already exists: {args.json_report}")
@@ -87,6 +101,8 @@ def main(argv: list[str] | None = None) -> int:
             check_stream_options=args.check_stream_options,
             max_output_tokens=args.max_output_tokens,
             token_field=args.token_field,
+            check_image_generation=args.check_image_generation,
+            image_model=args.image_model,
         )
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.", file=sys.stderr)

@@ -24,6 +24,8 @@ class _State:
     reject_stream_options = False
     minimum_output_tokens = 0
     finish_reason = "stop"
+    image_status = 200
+    image_response: dict[str, object] = {"data": [{"b64_json": "synthetic-image-payload"}]}
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -60,6 +62,9 @@ class _Handler(BaseHTTPRequestHandler):
             "authorization": self.headers.get("Authorization"),
             "body": body,
         })
+        if self.path.endswith("/images/generations"):
+            self._send_json(_State.image_response, _State.image_status)
+            return
         if body.get("stream_options") and _State.reject_stream_options:
             self._send_json({"error": {"message": "unsupported stream options"}}, 400)
             return
@@ -125,6 +130,8 @@ class CoreTests(unittest.TestCase):
         _State.reject_stream_options = False
         _State.minimum_output_tokens = 0
         _State.finish_reason = "stop"
+        _State.image_status = 200
+        _State.image_response = {"data": [{"b64_json": "synthetic-image-payload"}]}
 
     def test_base_url_normalization_and_rejections(self) -> None:
         self.assertEqual(normalize_base_url(" https://api.example.com/v1/ "), "https://api.example.com/v1")
@@ -167,6 +174,121 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(statuses["model catalog"], "pass")
         self.assertEqual(statuses["streaming"], "pass")
         self.assertEqual(statuses["JSON mode"], "pass")
+
+    def test_image_generation_is_opt_in_and_uses_one_separate_request(self) -> None:
+        report = run_diagnostics(
+            self.base_url,
+            "fixture-chat-model",
+            "hidden-image-test-key",
+            check_image_generation=True,
+            image_model=" fixture-image-model ",
+        )
+        self.assertTrue(report.chat_ready)
+        self.assertTrue(report.image_generation_ready)
+        self.assertEqual(report.image_model, "fixture-image-model")
+        self.assertEqual(len(_State.requests), 2)
+        image_request = _State.requests[1]
+        self.assertEqual(image_request["path"], "/v1/images/generations")
+        self.assertEqual(image_request["authorization"], "Bearer hidden-image-test-key")
+        self.assertEqual(image_request["body"]["model"], "fixture-image-model")
+        self.assertEqual(image_request["body"]["prompt"], "A simple blue circle centered on a plain white background.")
+        self.assertEqual(image_request["body"]["n"], 1)
+        self.assertTrue(report.to_dict()["image_generation_ready"])
+        serialized = json.dumps(report.to_dict())
+        self.assertNotIn("hidden-image-test-key", serialized)
+        self.assertNotIn("synthetic-image-payload", serialized)
+        self.assertNotIn("A simple blue circle", serialized)
+        self.assertNotIn("/v1", serialized)
+
+    def test_image_generation_is_reported_as_unchecked_by_default(self) -> None:
+        report = run_diagnostics(self.base_url, "fixture-chat-model")
+        self.assertIsNone(report.image_generation_ready)
+        self.assertIsNone(report.to_dict()["image_model"])
+
+    def test_image_generation_accepts_url_response_without_fetching_it(self) -> None:
+        _State.image_response = {"data": [{"url": "https://images.example.test/generated.png"}]}
+        report = run_diagnostics(
+            self.base_url,
+            "fixture-chat-model",
+            check_image_generation=True,
+            image_model="fixture-image-model",
+        )
+        self.assertTrue(report.image_generation_ready)
+        self.assertEqual(len(_State.requests), 2)
+        self.assertEqual(_State.requests[1]["path"], "/v1/images/generations")
+        self.assertNotIn("images.example.test", json.dumps(report.to_dict()))
+
+    def test_image_generation_rejects_malformed_success_and_sanitizes_http_errors(self) -> None:
+        _State.image_response = {"data": [{"url": "file:///tmp/private.png"}]}
+        report = run_diagnostics(
+            self.base_url,
+            "fixture-chat-model",
+            check_image_generation=True,
+            image_model="fixture-image-model",
+        )
+        check = next(item for item in report.checks if item.name == "image generation")
+        self.assertEqual(check.status, "fail")
+        self.assertNotIn("/tmp/private.png", json.dumps(report.to_dict()))
+
+        _State.requests = []
+        _State.image_status = 401
+        _State.image_response = {"error": {"message": "private-provider-error"}}
+        report = run_diagnostics(
+            self.base_url,
+            "fixture-chat-model",
+            check_image_generation=True,
+            image_model="fixture-image-model",
+        )
+        check = next(item for item in report.checks if item.name == "image generation")
+        self.assertEqual(check.status, "fail")
+        self.assertNotIn("private-provider-error", json.dumps(report.to_dict()))
+
+    def test_image_generation_oversize_response_warns_without_recording_body(self) -> None:
+        _State.image_response = {"data": [{"b64_json": "x" * 200}]}
+        with patch("llm_endpoint_doctor.core._MAX_IMAGE_RESPONSE_BYTES", 32):
+            report = run_diagnostics(
+                self.base_url,
+                "fixture-chat-model",
+                check_image_generation=True,
+                image_model="fixture-image-model",
+            )
+        check = next(item for item in report.checks if item.name == "image generation")
+        self.assertEqual(check.status, "warn")
+        self.assertIsNone(report.image_generation_ready)
+        self.assertNotIn("x" * 50, json.dumps(report.to_dict()))
+        self.assertEqual(len(_State.requests), 2)
+
+    def test_cli_image_check_prints_selected_model_and_sends_only_when_selected(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exit_code = main([
+                "--base-url", self.base_url,
+                "--model", "fixture-chat-model",
+                "--check-image-generation",
+                "--image-model", "fixture-image-model",
+                "--no-prompt",
+            ])
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Image model: fixture-image-model", output.getvalue())
+        self.assertIn("[PASS] image generation", output.getvalue())
+        self.assertEqual(len(_State.requests), 2)
+
+    def test_image_model_validation_is_explicit(self) -> None:
+        with self.assertRaisesRegex(ValueError, "image model ID is required"):
+            run_diagnostics(self.base_url, "fixture-chat-model", check_image_generation=True)
+        with self.assertRaisesRegex(ValueError, "only with the image-generation check"):
+            run_diagnostics(self.base_url, "fixture-chat-model", image_model="fixture-image-model")
+        self.assertEqual(_State.requests, [])
+
+    def test_cli_requires_image_model_before_prompting_or_sending(self) -> None:
+        with patch("getpass.getpass", side_effect=AssertionError("key prompt must not run")):
+            with self.assertRaises(SystemExit):
+                main([
+                    "--base-url", self.base_url,
+                    "--model", "fixture-chat-model",
+                    "--check-image-generation",
+                ])
+        self.assertEqual(_State.requests, [])
 
     def test_stream_options_check_reports_usage_metadata(self) -> None:
         report = run_diagnostics(self.base_url, "fixture-model", check_stream_options=True)

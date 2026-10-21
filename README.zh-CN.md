@@ -1,8 +1,8 @@
 # LLM Endpoint Doctor｜大模型接口体检
 
-**把 OpenAI 兼容接口接进应用之前，先确认它能不能正常工作。**
+**把 OpenAI 兼容 API 接进应用之前，先检查对话和生图接口。**
 
-运行一条本地命令，检查 API 地址、模型 ID、鉴权和第一次对话响应。需要时再额外检查模型列表、流式输出和 JSON 模式。
+运行一条本地命令，检查 API 地址、模型 ID、鉴权和第一次对话响应。需要时再额外检查模型列表、流式输出、JSON 模式或单独的图片生成模型。
 
 [English README](README.md) · [反馈问题](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
@@ -62,7 +62,9 @@ llm-doctor \
   --check-model-list \
   --check-streaming \
   --check-stream-options \
-  --check-json-mode
+  --check-json-mode \
+  --check-image-generation \
+  --image-model demo-image-model
 ```
 
 ```text
@@ -71,11 +73,12 @@ llm-doctor \
 [PASS] streaming — 收到 SSE 完成标记。
 [PASS] stream options — 流式请求完成，并返回了请求的用量信息。
 [PASS] JSON mode — 返回了 JSON 对象。
+[PASS] image generation — 收到 Base64 或 HTTP(S) 图片 URL 形式的图片结果；未下载或保存媒体文件。
 
 Basic chat: READY
 ```
 
-模拟服务只监听本机回环地址并返回固定响应。它展示请求和报告流程，不代表已测试任何外部服务。按 `Ctrl+C` 停止。
+模拟服务只监听本机回环地址并返回固定响应。生图路径返回合成占位值，并不是真实图片字节；它展示请求和报告流程，不代表已测试任何外部服务。按 `Ctrl+C` 停止。
 
 ## 聊天正常，流式工具调用却失败？
 
@@ -106,6 +109,18 @@ llm-doctor \
 
 只有目标文件不存在时才会创建 JSON 报告。报告包含目标主机、模型 ID、检查结果和耗时，不包含 API Key、URL 路径、提示词或回复内容。
 
+检查单独的生图模型时，显式增加一次图片生成请求：
+
+```bash
+llm-doctor \
+  --base-url https://api.example.com/v1 \
+  --model your-chat-model \
+  --check-image-generation \
+  --image-model your-image-model
+```
+
+工具会向 `POST /images/generations` 发送一条固定提示词（`A simple blue circle centered on a plain white background.`），`n=1`。它与对话检查共用 `--base-url` 和 API Key，但图片模型可以不同。图片生成可能产生服务商费用。工具只检查是否返回非空 Base64 图片字段或 HTTP(S) 图片 URL，不下载、不保存图片。响应只在检查期间保留，解析上限为 32 MB。[OpenAI 图片生成 API 文档](https://developers.openai.com/api/reference/resources/images/methods/generate)。
+
 ## 非交互模式与 CI
 
 无 Key 接口可以显式跳过输入提示：
@@ -134,6 +149,7 @@ CI 中可以从环境变量读取 Key，避免把它放进命令行参数：
 - **流式输出（可选）：** 检查是否收到 server-sent events 结束标记。
 - **流式选项（可选）：** 在流式请求中发送 `stream_options: {"include_usage": true}`，检查端点是否接受该参数并返回用量信息。普通流式可用但不兼容此客户端选项时，这项检查会给出提醒。
 - **JSON 模式（可选）：** 请求返回 JSON 对象，并检查内容能否解析为对象。
+- **图片生成（可选）：** 使用 `--check-image-generation --image-model ID` 时，向 `/images/generations` 额外发送一次固定提示词，检查是否返回非空 `data[].b64_json` 或 HTTP(S) `data[].url`。不会抓取 URL、解码或保存图片字节，也不评价图片质量。
 - **常见故障：** 区分鉴权/权限错误、接口或模型不存在、速率限制、服务错误、超时和 TLS 错误，不输出服务商的原始错误正文。
 
 工具不会自动重试，不评价回答质量、不做服务商跑分、不保证兼容每种客户端，也不能判断服务商的免费额度会长期不变。
@@ -146,6 +162,7 @@ CI 中可以从环境变量读取 Key，避免把它放进命令行参数：
 - 远程接口必须使用 HTTPS；只有 localhost 测试允许普通 HTTP。
 - 工具拒绝 URL 查询参数、内嵌凭据和跨域跳转，避免将 Key 转发给其他主机。
 - 接口服务商会收到测试请求，并可能按自己的规则计量。可选检查会增加请求次数，只在需要时启用。
+- 图片检查会向接口发送固定提示词并可能产生图片生成费用；只请求一张图片且不会保存返回图片。超过大小上限的响应不会被解析。
 
 ## 开发
 

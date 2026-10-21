@@ -38,7 +38,7 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
         })
 
     def do_POST(self) -> None:
-        if self.path != "/v1/chat/completions":
+        if self.path not in {"/v1/chat/completions", "/v1/images/generations"}:
             self._send_json({"error": {"message": "Not found"}}, 404)
             return
 
@@ -62,6 +62,14 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
         model = request.get("model")
         if not isinstance(model, str) or not model:
             self._send_json({"error": {"message": "A model is required"}}, 400)
+            return
+
+        if self.path == "/v1/images/generations":
+            prompt = request.get("prompt")
+            if not isinstance(prompt, str) or not prompt or request.get("n") != 1:
+                self._send_json({"error": {"message": "Image demo expects a prompt and n=1"}}, 400)
+                return
+            self._send_json({"created": 0, "data": [{"b64_json": "synthetic-placeholder-not-image"}]})
             return
 
         cap = request.get("max_completion_tokens", request.get("max_tokens", 0))
