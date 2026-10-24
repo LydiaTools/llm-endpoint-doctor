@@ -22,6 +22,19 @@
 
 想直接安装预构建包？下载 [v0.6.0 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
 
+在下载文件所在目录执行，无需克隆仓库：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.0-py3-none-any.whl
+llm-doctor --version
+```
+
+上方命令用于 macOS/Linux。Windows PowerShell 用 `py -3 -m venv .venv` 创建环境、`.venv\Scripts\Activate.ps1` 激活，然后运行相同的 `python -m pip install` 和 `llm-doctor --version` 命令。
+
+也可安装当前源码；后文的本地模拟服务示例包含在源码中：
+
 ```bash
 git clone https://github.com/LydiaTools/llm-endpoint-doctor.git
 cd llm-endpoint-doctor

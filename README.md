@@ -22,6 +22,19 @@ Requires Python 3.9 or later. No third-party runtime dependencies.
 
 Prefer a prebuilt package? Download the [v0.6.0 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl.sha256). This is an alpha preview.
 
+From the folder containing the downloaded wheel, install it without cloning the repository:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.0-py3-none-any.whl
+llm-doctor --version
+```
+
+These commands use macOS/Linux. In Windows PowerShell, create the environment with `py -3 -m venv .venv` and activate it with `.venv\Scripts\Activate.ps1`, then run the same `python -m pip install` and `llm-doctor --version` commands.
+
+Or install the current source, including the local example server used later in this README:
+
 ```bash
 git clone https://github.com/LydiaTools/llm-endpoint-doctor.git
 cd llm-endpoint-doctor
