@@ -112,6 +112,10 @@ python3 examples/replay_tool_stream.py
 
 也可用 `--file capture.sse` 检查本机捕获；只输出判断、固定原因与调用数量，不执行工具。[实际对照、输出与中英文排查步骤](docs/tool-stream-replay.md)。下面的可选 `--check-tool-calling` 会单独检查真实接口是否返回符合预期的函数调用结构；不会执行函数，也不检查流式工具调用处理。
 
+![公开指南中的六组原创离线工具流对照。](docs/assets/tool-stream-replay.png)
+
+*公开指南实景截图：原创合成回放对照，不代表真实 Provider 性能测试。*
+
 ## 可选检查
 
 每项已选择的检查都会增加一次请求。流式、stream options、JSON、工具调用、生图和看图分别增加一次生成请求；模型列表检查增加一次 GET。

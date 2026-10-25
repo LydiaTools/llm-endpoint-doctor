@@ -112,6 +112,10 @@ It accepts call metadata sent only in the first delta and keeps interleaved argu
 
 You can also inspect one local capture with `--file capture.sse`; output contains only acceptance, a fixed reason and the call count. No tool is executed. [Actual controls, output and bilingual troubleshooting guide](docs/tool-stream-replay.md). The optional `--check-tool-calling` probe below separately checks a live endpoint's returned function-call shape; it does not execute that function or test streamed tool-call handling.
 
+![Six original offline tool-stream controls, shown in the actual public guide.](docs/assets/tool-stream-replay.png)
+
+*Actual rendered guide: synthetic replay controls, not a live provider benchmark.*
+
 ## Optional checks
 
 Each selected check adds one request. Streaming, stream-options, JSON mode, tool calling, image generation, and vision input each send one additional generation request; the model catalog check adds one GET.
