@@ -450,6 +450,7 @@ def _request_stream(
     saw_done = False
     saw_usage = False
     saw_length_limit = False
+    saw_stream_error = False
     for line in text.splitlines():
         line = line.strip()
         if line == "data: [DONE]":
@@ -463,10 +464,18 @@ def _request_stream(
             continue
         if isinstance(chunk, dict) and isinstance(chunk.get("usage"), dict):
             saw_usage = True
+        if isinstance(chunk, dict):
+            choices = chunk.get("choices")
+            if chunk.get("error") is not None or (
+                isinstance(choices, list)
+                and any(isinstance(choice, dict) and choice.get("finish_reason") == "error" for choice in choices)
+            ):
+                saw_stream_error = True
         if _output_limited(chunk):
             saw_length_limit = True
     return _Response(status_code, elapsed, payload={
         "saw_done": saw_done, "saw_usage": saw_usage, "saw_length_limit": saw_length_limit,
+        "saw_stream_error": saw_stream_error,
     })
 
 
@@ -555,7 +564,9 @@ def run_diagnostics(
 
     if check_streaming:
         result = _request_stream(normalized, api_key, _chat_body(model, stream=True, **body_options), timeout)
-        if result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_length_limit"):
+        if result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_stream_error"):
+            checks.append(CheckResult("streaming", "warn", "The stream reported an error; the response body was omitted.", result.elapsed_ms))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_length_limit"):
             checks.append(CheckResult("streaming", "warn", _OUTPUT_LIMIT_DETAIL, result.elapsed_ms))
         elif result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_done"):
             checks.append(CheckResult("streaming", "pass", "Server sent an SSE completion marker.", result.elapsed_ms))
@@ -569,7 +580,9 @@ def run_diagnostics(
         body["stream_options"] = {"include_usage": True}
         result = _request_stream(normalized, api_key, body, timeout)
         complete = result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_done")
-        if result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_length_limit"):
+        if result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_stream_error"):
+            checks.append(CheckResult("stream options", "warn", "The stream reported an error; the response body was omitted.", result.elapsed_ms))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and isinstance(result.payload, dict) and result.payload.get("saw_length_limit"):
             checks.append(CheckResult("stream options", "warn", _OUTPUT_LIMIT_DETAIL, result.elapsed_ms))
         elif complete and result.payload.get("saw_usage"):
             checks.append(CheckResult("stream options", "pass", "SSE completed and included usage metadata when requested.", result.elapsed_ms))

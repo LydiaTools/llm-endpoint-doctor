@@ -25,6 +25,7 @@ class _State:
     redirect_status = 307
     redirected_authorization: str | None = None
     reject_stream_options = False
+    stream_error = ""
     minimum_output_tokens = 0
     finish_reason = "stop"
     image_status = 200
@@ -108,6 +109,10 @@ class _Handler(BaseHTTPRequestHandler):
             chunks = [b'data: {"choices":[{"delta":{"content":"endpoint-ok"}}]}\n\n']
             if isinstance(body.get("stream_options"), dict) and body["stream_options"].get("include_usage"):
                 chunks.append(b'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n')
+            if _State.stream_error == "object":
+                chunks.append(b'data: {"error":{"code":429,"message":"private-provider-error"},"choices":[]}\n\n')
+            if _State.stream_error == "finish":
+                finish_reason = "error"
             chunks.append(('data: ' + json.dumps({"choices": [{"finish_reason": finish_reason, "delta": {}}]}) + '\n\n').encode())
             chunks.append(b"data: [DONE]\n\n")
             stream = b"".join(chunks)
@@ -158,6 +163,7 @@ class CoreTests(unittest.TestCase):
         _State.redirect_status = 307
         _State.redirected_authorization = None
         _State.reject_stream_options = False
+        _State.stream_error = ""
         _State.minimum_output_tokens = 0
         _State.finish_reason = "stop"
         _State.image_status = 200
@@ -653,6 +659,25 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(report.chat_ready)
         self.assertEqual([r["body"]["max_tokens"] for r in _State.requests], [12, 12, 12, 24])
         self.assertTrue(all("max_completion_tokens" not in r["body"] for r in _State.requests))
+
+    def test_stream_error_overrides_done_and_usage_without_changing_basic_chat(self) -> None:
+        for error in ("object", "finish"):
+            with self.subTest(error=error):
+                _State.stream_error = error
+                _State.requests = []
+                report = run_diagnostics(self.base_url, "fixture-model", check_streaming=True, check_stream_options=True)
+                self.assertTrue(report.chat_ready)
+                self.assertEqual([check.status for check in report.checks], ["pass", "warn", "warn"])
+                self.assertEqual(len(_State.requests), 3)
+                for check in report.checks[1:]:
+                    self.assertIn("stream reported an error", check.detail)
+                self.assertNotIn("private-provider-error", json.dumps(report.to_dict()))
+
+    def test_normal_stream_done_and_usage_still_pass(self) -> None:
+        report = run_diagnostics(self.base_url, "fixture-model", check_streaming=True, check_stream_options=True)
+        self.assertTrue(report.chat_ready)
+        self.assertEqual([check.status for check in report.checks], ["pass", "pass", "pass"])
+        self.assertEqual(len(_State.requests), 3)
 
     def test_explicit_budget_and_field_apply_to_each_generation_not_catalog(self) -> None:
         report = run_diagnostics(self.base_url, "fixture-model", check_model_list=True, check_streaming=True, check_stream_options=True, check_json_mode=True, max_output_tokens=1024, token_field="max_completion_tokens")

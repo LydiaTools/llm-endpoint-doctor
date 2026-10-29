@@ -2,7 +2,7 @@
 
 [Project](../README.md) · [简体中文](free-api-setup.zh-CN.md)
 
-**Choose the provider, copy its exact model ID, then check it before adding it to your app.** Install the [v0.6.0 wheel or current source](../README.md#quick-start), then use that environment's `llm-doctor` command below. The wheel includes these output controls; you do not need Git or a source checkout for the provider checks. The local mock example at the end uses files from the source repository.
+**Choose the provider, copy its exact model ID, then check it before adding it to your app.** Install the [v0.6.1 wheel or current source](../README.md#quick-start), then use that environment's `llm-doctor` command below. The wheel includes these output controls; you do not need Git or a source checkout for the provider checks. The local mock example at the end uses files from the source repository.
 
 Official documentation reviewed on **2026-10-21 (Asia/Shanghai)**. Provider recipes are documentation-checked; no live provider account or key was used to validate them. The local reproduction below is a synthetic fixture.
 

@@ -20,14 +20,14 @@ It complements provider directories: directories help you find an endpoint; this
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
 
-Prefer a prebuilt package? Download the [v0.6.0 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl.sha256). This is an alpha preview.
+Prefer a prebuilt package? Download the [v0.6.1 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.1/llm_endpoint_doctor-0.6.1-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.1/llm_endpoint_doctor-0.6.1-py3-none-any.whl.sha256). This is an alpha preview.
 
 From the folder containing the downloaded wheel, install it without cloning the repository:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.0-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.1-py3-none-any.whl
 llm-doctor --version
 ```
 
@@ -181,13 +181,15 @@ If the named environment variable is missing or empty, the command stops before 
 
 - **Chat completion:** Sends one short test prompt to `/chat/completions` and verifies the response has text in the expected OpenAI chat format.
 - **Model catalog (optional):** Checks whether the exact model ID appears in `/models`. Some providers use aliases or incomplete catalogs, so a missing ID is a warning rather than a failed chat test.
-- **Streaming (optional):** Checks for a server-sent events completion marker.
+- **Streaming (optional):** Checks for a server-sent events completion marker and warns when a single-line JSON data event reports an error, even if a completion marker follows.
 - **Stream options (optional):** Sends `stream_options: {"include_usage": true}` with a streaming request and checks whether usage metadata arrives. This can reveal endpoints that accept ordinary streaming but reject or ignore this client option.
 - **JSON mode (optional):** Requests a JSON object and checks that the returned content parses as an object.
 - **Image generation (optional):** With `--check-image-generation --image-model ID`, sends one additional fixed-prompt request to `/images/generations` and checks for a non-empty `data[].b64_json` or HTTP(S) `data[].url` result. It does not fetch URL results, decode or save image bytes, or judge image quality.
 - **Vision input (optional):** With `--check-vision-input`, sends one additional chat request with a built-in synthetic PNG data URL. It checks the response against four expected color quadrants; a mismatch stays unconfirmed. This is not a vision-quality benchmark.
 - **Tool calling (optional):** With `--check-tool-calling`, sends one additional chat request with a fixed function schema. It checks for one function call with the expected name and JSON arguments; it never executes the function and does not grade semantic reliability.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
+
+These optional checks report their own warnings. The CLI exit code still follows basic chat readiness, so a successful chat can exit 0 alongside a streaming warning; inspect the individual check or JSON report. This is a bounded single-line SSE check, not a full streaming-client compatibility test.
 
 The tool makes no automatic retries. It does not grade answer quality, benchmark providers, guarantee compatibility with every client, or determine whether a provider's free tier will remain available.
 

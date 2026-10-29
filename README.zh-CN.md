@@ -20,14 +20,14 @@
 
 需要 Python 3.9 或更新版本，无第三方运行依赖。
 
-想直接安装预构建包？下载 [v0.6.0 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.0/llm_endpoint_doctor-0.6.0-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
+想直接安装预构建包？下载 [v0.6.1 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.1/llm_endpoint_doctor-0.6.1-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.1/llm_endpoint_doctor-0.6.1-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
 
 在下载文件所在目录执行，无需克隆仓库：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.0-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.1-py3-none-any.whl
 llm-doctor --version
 ```
 
@@ -184,13 +184,15 @@ CI 中可以从环境变量读取 Key，避免把它放进命令行参数：
 
 - **普通对话：** 向 `/chat/completions` 发送一条短测试提示，确认返回符合 OpenAI Chat 格式的文本。
 - **模型列表（可选）：** 检查 `/models` 是否列出完全匹配的模型 ID。部分服务商使用别名或不完整目录，因此未列出只显示提醒，不直接判定对话失败。
-- **流式输出（可选）：** 检查是否收到 server-sent events 结束标记。
+- **流式输出（可选）：** 检查是否收到 server-sent events 结束标记；单行 JSON 数据事件报告错误时，即使后面有结束标记也会提示警告。
 - **流式选项（可选）：** 在流式请求中发送 `stream_options: {"include_usage": true}`，检查端点是否接受该参数并返回用量信息。普通流式可用但不兼容此客户端选项时，这项检查会给出提醒。
 - **JSON 模式（可选）：** 请求返回 JSON 对象，并检查内容能否解析为对象。
 - **工具调用（可选）：** 使用 `--check-tool-calling` 时，额外发送一次带固定函数 Schema 的聊天请求，检查是否返回名称和参数都符合预期的函数调用；不会执行函数，也不评价语义可靠性。
 - **图片生成（可选）：** 使用 `--check-image-generation --image-model ID` 时，向 `/images/generations` 额外发送一次固定提示词，检查是否返回非空 `data[].b64_json` 或 HTTP(S) `data[].url`。不会抓取 URL、解码或保存图片字节，也不评价图片质量。
 - **看图输入（可选）：** 使用 `--check-vision-input` 时，额外发送一次含内置合成 PNG data URL 的聊天请求，并检查回复是否匹配四个颜色象限；不匹配时保持未确认。这不是视觉质量评测。
 - **常见故障：** 区分鉴权/权限错误、接口或模型不存在、速率限制、服务错误、超时和 TLS 错误，不输出服务商的原始错误正文。
+
+这些可选检查分别报告警告。CLI 退出码仍只依据基础聊天是否就绪，因此聊天成功时，即使流式检查有警告也可能退出 0；请查看单项结果或 JSON 报告。这里检查的是有限范围内的单行 SSE 事件，不是完整的流式客户端兼容性测试。
 
 工具不会自动重试，不评价回答质量、不做服务商跑分、不保证兼容每种客户端，也不能判断服务商的免费额度会长期不变。
 
