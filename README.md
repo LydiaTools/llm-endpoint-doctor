@@ -20,14 +20,14 @@ It complements provider directories: directories help you find an endpoint; this
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
 
-Prefer a prebuilt package? Download the [v0.6.1 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.1/llm_endpoint_doctor-0.6.1-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.1/llm_endpoint_doctor-0.6.1-py3-none-any.whl.sha256). This is an alpha preview.
+Prefer a prebuilt package? Download the [v0.6.2 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.2/llm_endpoint_doctor-0.6.2-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.2/llm_endpoint_doctor-0.6.2-py3-none-any.whl.sha256). This is an alpha preview.
 
 From the folder containing the downloaded wheel, install it without cloning the repository:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.1-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.2-py3-none-any.whl
 llm-doctor --version
 ```
 
@@ -188,6 +188,8 @@ If the named environment variable is missing or empty, the command stops before 
 - **Vision input (optional):** With `--check-vision-input`, sends one additional chat request with a built-in synthetic PNG data URL. It checks the response against four expected color quadrants; a mismatch stays unconfirmed. This is not a vision-quality benchmark.
 - **Tool calling (optional):** With `--check-tool-calling`, sends one additional chat request with a fixed function schema. It checks for one function call with the expected name and JSON arguments; it never executes the function and does not grade semantic reliability.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
+
+For a single-line JSON event with null or empty `choices`, nonempty `error_type` and `error_message` fields are also reported as a stream error. This control uses a synthetic event based on fields described in [a public issue](https://github.com/NousResearch/hermes-agent/issues/65631); it is not a captured wire response or a live provider test. Provider messages are not printed.
 
 These optional checks report their own warnings. The CLI exit code still follows basic chat readiness, so a successful chat can exit 0 alongside a streaming warning; inspect the individual check or JSON report. This is a bounded single-line SSE check, not a full streaming-client compatibility test.
 

@@ -15,7 +15,47 @@ from pathlib import Path
 from unittest.mock import patch
 
 from llm_endpoint_doctor.cli import main
-from llm_endpoint_doctor.core import normalize_base_url, run_diagnostics
+from llm_endpoint_doctor.core import _request_stream, normalize_base_url, run_diagnostics
+
+
+class StreamMetadataUnitTests(unittest.TestCase):
+    def test_provider_metadata_shape_and_non_errors(self) -> None:
+        class Response:
+            status = 200
+
+            def __init__(self, chunk: object) -> None:
+                self.chunk = chunk
+
+            def __enter__(self) -> "Response":
+                return self
+
+            def __exit__(self, *_: object) -> None:
+                pass
+
+            def read(self, *_: object) -> bytes:
+                return ("data: " + json.dumps(self.chunk) + "\n\n").encode()
+
+        class Opener:
+            def __init__(self, chunk: object) -> None:
+                self.chunk = chunk
+
+            def open(self, *_: object, **__: object) -> Response:
+                return Response(self.chunk)
+
+        cases = [
+            ({"choices": None, "error_type": "BadRequestError", "error_message": "private"}, True),
+            ({"choices": [], "error_type": "BadRequestError", "error_message": "private"}, True),
+            ({"choices": [], "error_type": "", "error_message": "private"}, False),
+            ({"choices": [], "error_type": "BadRequestError"}, False),
+            ({"choices": [{"delta": {"content": "ok"}}], "error_type": "metadata", "error_message": "note"}, False),
+            ({"choices": [], "usage": {"total_tokens": 2}}, False),
+        ]
+        for chunk, expected in cases:
+            with self.subTest(chunk=chunk), patch("llm_endpoint_doctor.core.build_opener", return_value=Opener(chunk)):
+                response = _request_stream("http://example.invalid/v1", "secret", {"stream": True}, 1)
+                self.assertEqual(response.payload["saw_stream_error"], expected)
+                self.assertFalse(response.payload["saw_done"])
+                self.assertNotIn("private", json.dumps(response.payload))
 
 
 class _State:
@@ -111,6 +151,9 @@ class _Handler(BaseHTTPRequestHandler):
                 chunks.append(b'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n')
             if _State.stream_error == "object":
                 chunks.append(b'data: {"error":{"code":429,"message":"private-provider-error"},"choices":[]}\n\n')
+            if _State.stream_error == "metadata":
+                # Synthetic event based on the fields in hermes-agent #65631, not a captured wire response.
+                chunks.append(b'data: {"choices":null,"error_type":"BadRequestError","error_message":"private-provider-error"}\n\n')
             if _State.stream_error == "finish":
                 finish_reason = "error"
             chunks.append(('data: ' + json.dumps({"choices": [{"finish_reason": finish_reason, "delta": {}}]}) + '\n\n').encode())
@@ -661,7 +704,7 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(all("max_completion_tokens" not in r["body"] for r in _State.requests))
 
     def test_stream_error_overrides_done_and_usage_without_changing_basic_chat(self) -> None:
-        for error in ("object", "finish"):
+        for error in ("object", "finish", "metadata"):
             with self.subTest(error=error):
                 _State.stream_error = error
                 _State.requests = []

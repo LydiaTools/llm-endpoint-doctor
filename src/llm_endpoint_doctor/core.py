@@ -469,6 +469,12 @@ def _request_stream(
             if chunk.get("error") is not None or (
                 isinstance(choices, list)
                 and any(isinstance(choice, dict) and choice.get("finish_reason") == "error" for choice in choices)
+            ) or (
+                (choices is None or choices == [])
+                and isinstance(chunk.get("error_type"), str)
+                and bool(chunk["error_type"].strip())
+                and isinstance(chunk.get("error_message"), str)
+                and bool(chunk["error_message"].strip())
             ):
                 saw_stream_error = True
         if _output_limited(chunk):
