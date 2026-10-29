@@ -46,6 +46,16 @@ llm-doctor --base-url https://openrouter.ai/api/v1 --model openrouter/free --max
 
 [Free Models Router](https://openrouter.ai/openrouter/free)在可用免费模型中选择，不固定某个模型。要比较同一模型，应选目录里具体的免费条目。不能给任意模型名加`:free`就当成免费模型。这条命令只发送一个模型、不带回退数组；官方文档明确，回退到付费模型按那个模型收费。
 
+## 另一个由我维护的接入方式：ChinaGenAI
+
+[ChinaGenAI](https://chinagenai.com/connect) 是我维护的另一个项目。其公开接入页列出了下面的 Base URL 和客户端模型标签；`free` 是标签，不代表固定的底层模型。有网站 Key 后，可以用下面的命令检查一次聊天请求：
+
+```bash
+llm-doctor --base-url https://chinagenai.com/v1 --model free --max-output-tokens 128
+```
+
+在隐藏提示中输入网站 Key。我于 2026-10-30 核对了公开接入页；这条命令尚未使用真实账号或 Key 在线验收。实际使用前请查看网站当前的访问条件和可用情况。工具只发送一次请求，不会创建 Key 或自动重试。
+
 ## 看结果，再接应用
 
 | 结果 | 下一步 |

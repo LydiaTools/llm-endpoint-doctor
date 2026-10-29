@@ -46,6 +46,16 @@ llm-doctor --base-url https://openrouter.ai/api/v1 --model openrouter/free --max
 
 The [Free Models Router](https://openrouter.ai/openrouter/free) selects among available free models; it does not pin one model. For repeatable model comparisons, choose an exact free catalog entry instead. Appending `:free` to an arbitrary model name does not create a free variant. This command sends one model, with no fallback array. OpenRouter documents that a fallback to a paid model is billed at that model's price.
 
+## Another route I maintain: ChinaGenAI
+
+[ChinaGenAI](https://chinagenai.com/connect) is a separate project I maintain. Its public setup page lists the following base URL and client model label; the label `free` does not identify a fixed underlying model. With a site key, you can check one chat request using:
+
+```bash
+llm-doctor --base-url https://chinagenai.com/v1 --model free --max-output-tokens 128
+```
+
+Enter the site key at the hidden prompt. I checked the public setup page on 2026-10-30; this recipe was not tested with a live account or key. Check the site's current access and availability before relying on it. The doctor sends one request and does not create a key or retry.
+
 ## Read the result before wiring up your app
 
 | Result | Next action |
