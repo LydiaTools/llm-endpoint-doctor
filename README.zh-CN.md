@@ -16,6 +16,8 @@
 
 **聊天正常，Agent 还需要工具调用？** [先用无需密钥的例子区分两种结果](docs/chat-vs-tools.zh-CN.md)，再检查自己的兼容路由器。
 
+**使用 FreeLLMAPI？** [用真实路由代码复现两次请求走不同路径](docs/chat-vs-tools.zh-CN.md#使用真实路由代码复现)，上游响应为虚构数据。
+
 **准备启动 Agent 循环？** [先核对计费项目和请求次数](docs/api-cost-preflight.zh-CN.md)：包含 Gemini 当前支出上限入口、报表延迟，以及默认和可选检查的无需 Key 实测请求数。
 
 ## 快速开始
