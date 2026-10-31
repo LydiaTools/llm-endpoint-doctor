@@ -22,14 +22,14 @@
 
 需要 Python 3.9 或更新版本，无第三方运行依赖。
 
-想直接安装预构建包？下载 [v0.6.2 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.2/llm_endpoint_doctor-0.6.2-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.2/llm_endpoint_doctor-0.6.2-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
+想直接安装预构建包？下载 [v0.6.3 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.3/llm_endpoint_doctor-0.6.3-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.3/llm_endpoint_doctor-0.6.3-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
 
 在下载文件所在目录执行，无需克隆仓库：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.2-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.3-py3-none-any.whl
 llm-doctor --version
 ```
 
