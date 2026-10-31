@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Inspect a Chat Completions response for a tool-call finish-reason mismatch in your browser.">
+  <title>Tool-call response check · LLM Endpoint Doctor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="inspector.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="https://github.com/LydiaTools/llm-endpoint-doctor"><span class="brand-mark" aria-hidden="true">⌁</span> LLM Endpoint Doctor</a>
+  <button class="language" id="language" type="button" aria-label="切换至中文">中文</button>
+</header>
+<main>
+  <div class="intro">
+    <h1 data-i18n="title">Did the tool call arrive?</h1>
+    <p data-i18n="intro">Check a Chat Completions response when your agent stops before using a tool.</p>
+  </div>
+  <div class="workspace">
+    <section class="input-section" aria-labelledby="input-heading">
+      <div class="section-header"><h2 id="input-heading" data-i18n="inputHeading">Response body</h2><button type="button" class="text-button" id="example" data-i18n="example">Try an example</button></div>
+      <label class="sr-only" for="response" data-i18n="inputLabel">Paste a non-streaming Chat Completions JSON response</label>
+      <textarea id="response" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="input-help" placeholder='{"choices": [{"message": {"tool_calls": [...]}, "finish_reason": "stop"}]}'></textarea>
+      <p id="input-help" class="help" data-i18n="help">Paste the JSON body only. Remove keys, headers, and private content first.</p>
+      <div class="actions"><button type="button" class="primary" id="inspect" data-i18n="inspect">Check response</button><button type="button" class="secondary" id="clear" data-i18n="clear">Clear</button></div>
+    </section>
+    <section class="result-section" aria-labelledby="result-heading" aria-live="polite">
+      <div class="section-header"><h2 id="result-heading" data-i18n="resultHeading">What the response says</h2><span class="local" data-i18n="local">On this device</span></div>
+      <div id="result" class="result empty">
+        <div class="result-symbol" id="symbol" aria-hidden="true">⌁</div>
+        <h3 id="result-title" data-i18n="emptyTitle">Ready when you are</h3>
+        <p id="result-detail" data-i18n="emptyDetail">Paste a response or try the example to see the result.</p>
+        <dl id="facts" hidden><div><dt data-i18n="reason">Finish reason</dt><dd id="fact-reason"></dd></div><div><dt data-i18n="callsLabel">Tool calls</dt><dd id="fact-calls"></dd></div><div><dt data-i18n="arguments">Arguments</dt><dd id="fact-arguments"></dd></div></dl>
+        <p id="next" class="next" hidden></p>
+      </div>
+    </section>
+  </div>
+  <div class="bottom"><p data-i18n="scope">Checks the first choice in a non-streaming Chat Completions JSON response. No API call is made; nothing is uploaded or executed.</p><p><a href="https://github.com/LydiaTools/llm-endpoint-doctor" data-i18n="source">Source and live endpoint checks</a><span aria-hidden="true"> · </span><a href="https://chinagenai.com/workbench#tool-call-stream" data-i18n="stream">Inspect a streaming capture</a></p></div>
+</main>
+</body>
+</html>
