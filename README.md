@@ -22,14 +22,14 @@ It complements provider directories: directories help you find an endpoint; this
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
 
-Prefer a prebuilt package? Download the [v0.6.2 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.2/llm_endpoint_doctor-0.6.2-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.2/llm_endpoint_doctor-0.6.2-py3-none-any.whl.sha256). This is an alpha preview.
+Prefer a prebuilt package? Download the [v0.6.3 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.3/llm_endpoint_doctor-0.6.3-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.3/llm_endpoint_doctor-0.6.3-py3-none-any.whl.sha256). This is an alpha preview.
 
 From the folder containing the downloaded wheel, install it without cloning the repository:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.2-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.3-py3-none-any.whl
 llm-doctor --version
 ```
 
