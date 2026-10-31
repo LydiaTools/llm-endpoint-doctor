@@ -15,13 +15,14 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-doctor",
         description="Check OpenAI-compatible chat and optional model capabilities.",
-        epilog="The default run sends one chat request. Each selected check sends one extra request. Tool-calling, vision and image checks send provider requests and may incur charges or use free-tier quota.",
+        epilog="The default run sends one chat request. Responses-only sends one Responses request instead. Each selected chat check sends one extra request. Tool-calling, vision and image checks send provider requests and may incur charges or use free-tier quota.",
     )
     parser.add_argument("--base-url", required=True, help="API base URL, such as https://api.example.com/v1")
     parser.add_argument("--model", required=True, help="Exact model ID or provider alias to test")
     parser.add_argument("--timeout", type=float, default=20.0, help="Per-request timeout in seconds (default: 20)")
     parser.add_argument("--max-output-tokens", type=int, metavar="N", help="Explicit output cap, 1..8192; may include reasoning tokens (default: 12 for chat, 24 for JSON/vision)")
-    parser.add_argument("--token-field", choices=("max_tokens", "max_completion_tokens"), default="max_tokens", help="Output-cap request field required by your provider (default: max_tokens)")
+    parser.add_argument("--token-field", choices=("max_tokens", "max_completion_tokens"), default=None, help="Output-cap request field required by your provider (default: max_tokens)")
+    parser.add_argument("--responses-only", action="store_true", help="Send one non-streaming Responses API text request instead of chat; this does not verify Codex compatibility")
     parser.add_argument("--check-model-list", action="store_true", help="Also GET /models (one extra request)")
     parser.add_argument("--check-streaming", action="store_true", help="Also test SSE streaming (one extra generation)")
     parser.add_argument("--check-stream-options", action="store_true", help="Also test stream_options.include_usage (one extra generation)")
@@ -54,13 +55,19 @@ def _print_report(report: DiagnosticReport) -> None:
         timing = f" ({check.elapsed_ms} ms)" if check.elapsed_ms is not None else ""
         print(f"[{label}] {check.name}{timing} — {check.detail}")
     print("")
-    print("Basic chat: READY" if report.chat_ready else "Basic chat: NOT READY")
+    if report.responses_text_ready is not None:
+        print("Responses text: CONFIRMED" if report.responses_text_ready else "Responses text: NOT CONFIRMED")
+        print("Streaming, continuation, tool calls, and Codex compatibility were not checked.")
+    else:
+        print("Basic chat: READY" if report.chat_ready else "Basic chat: NOT READY")
     print("No API key, prompt, or response content is included in the report.")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.responses_only and (args.token_field is not None or any((args.check_model_list, args.check_streaming, args.check_stream_options, args.check_json_mode, args.check_image_generation, args.image_model, args.check_vision_input, args.vision_model, args.check_tool_calling, args.compare_route_headers))):
+        parser.error("--responses-only cannot be combined with chat-specific checks, models, or --token-field")
     if args.compare_route_headers and not args.check_tool_calling:
         parser.error("--compare-route-headers requires --check-tool-calling")
     if not 1 <= args.timeout <= 120:
@@ -116,7 +123,8 @@ def main(argv: list[str] | None = None) -> int:
             check_json_mode=args.check_json_mode,
             check_stream_options=args.check_stream_options,
             max_output_tokens=args.max_output_tokens,
-            token_field=args.token_field,
+            token_field=args.token_field or "max_tokens",
+            responses_only=args.responses_only,
             check_image_generation=args.check_image_generation,
             image_model=args.image_model,
             check_vision_input=args.check_vision_input,
@@ -140,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Report not written: {args.json_report} already exists.", file=sys.stderr)
             return 2
         print(f"Sanitized report saved to {args.json_report}")
-    return 0 if report.chat_ready else 1
+    return 0 if (report.responses_text_ready if args.responses_only else report.chat_ready) else 1
 
 
 if __name__ == "__main__":

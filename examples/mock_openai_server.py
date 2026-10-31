@@ -42,7 +42,7 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
         })
 
     def do_POST(self) -> None:
-        if self.path not in {"/v1/chat/completions", "/v1/images/generations"}:
+        if self.path not in {"/v1/chat/completions", "/v1/images/generations", "/v1/responses"}:
             self._send_json({"error": {"message": "Not found"}}, 404)
             return
 
@@ -70,6 +70,13 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
 
         if self.split_routes:
             self.demo_route = "example/tool-model" if request.get("tools") else "example/chat-model"
+
+        if self.path == "/v1/responses":
+            if not isinstance(request.get("input"), str):
+                self._send_json({"error": {"message": "Responses demo expects input text"}}, 400)
+                return
+            self._send_json({"status": "completed", "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "fixture-ok"}]}]})
+            return
 
         if self.path == "/v1/images/generations":
             prompt = request.get("prompt")

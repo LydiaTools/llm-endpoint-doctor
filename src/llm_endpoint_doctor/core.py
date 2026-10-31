@@ -45,8 +45,14 @@ class DiagnosticReport:
     vision_model: str | None = None
 
     @property
-    def chat_ready(self) -> bool:
-        return any(c.name == "chat completion" and c.status == "pass" for c in self.checks)
+    def chat_ready(self) -> bool | None:
+        check = next((c for c in self.checks if c.name == "chat completion"), None)
+        return None if check is None else check.status == "pass"
+
+    @property
+    def responses_text_ready(self) -> bool | None:
+        check = next((c for c in self.checks if c.name == "responses text"), None)
+        return None if check is None else check.status == "pass"
 
     @property
     def image_generation_ready(self) -> bool | None:
@@ -76,6 +82,7 @@ class DiagnosticReport:
             "target": self.target,
             "model": self.model,
             "chat_ready": self.chat_ready,
+            "responses_text_ready": self.responses_text_ready,
             "image_model": self.image_model,
             "image_generation_ready": self.image_generation_ready,
             "vision_model": self.vision_model,
@@ -308,6 +315,23 @@ def _message_content(payload: Any) -> str | None:
         return None
     content = message.get("content")
     return content if isinstance(content, str) else None
+
+
+def _responses_has_text(payload: dict[str, Any]) -> bool:
+    output = payload.get("output")
+    if not isinstance(output, list):
+        return False
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "message" or item.get("role") != "assistant":
+            continue
+        content = item.get("content")
+        if isinstance(content, list) and any(
+            isinstance(part, dict) and part.get("type") == "output_text"
+            and isinstance(part.get("text"), str) and bool(part["text"].strip())
+            for part in content
+        ):
+            return True
+    return False
 
 
 def _has_image_result(payload: Any) -> bool:
@@ -560,6 +584,7 @@ def run_diagnostics(
     vision_model: str | None = None,
     check_tool_calling: bool = False,
     compare_route_headers: bool = False,
+    responses_only: bool = False,
 ) -> DiagnosticReport:
     normalized = normalize_base_url(base_url)
     model = model.strip()
@@ -597,6 +622,29 @@ def run_diagnostics(
         vision_model = model
     body_options = {"max_output_tokens": max_output_tokens, "token_field": token_field}
     checks: list[CheckResult] = []
+
+    if responses_only:
+        if any((check_model_list, check_streaming, check_stream_options, check_json_mode,
+                check_image_generation, check_vision_input, check_tool_calling, compare_route_headers)) or token_field != "max_tokens":
+            raise ValueError("Responses-only mode cannot be combined with chat-specific checks.")
+        result = _request_json(normalized, "/responses", api_key, {
+            "model": model,
+            "input": "Reply with a short greeting.",
+            "max_output_tokens": max_output_tokens if max_output_tokens is not None else 128,
+        }, timeout)
+        payload = result.payload
+        success = result.status_code is not None and 200 <= result.status_code < 300
+        if success and isinstance(payload, dict) and payload.get("status") == "incomplete":
+            detail = "The response was incomplete; output-token limits or provider settings may need adjustment."
+        elif success and isinstance(payload, dict) and payload.get("status") == "completed" and payload.get("error") is None and _responses_has_text(payload):
+            checks.append(CheckResult("responses text", "pass", "A completed Responses API message contained text; streaming and tools were not checked.", result.elapsed_ms))
+            return DiagnosticReport(_safe_target(normalized), model, checks)
+        elif success:
+            detail = "HTTP succeeded, but a completed Responses API message with text was not confirmed."
+        else:
+            detail = _error_detail(result.status_code, result.transport_error, result.retry_after_seconds)
+        checks.append(CheckResult("responses text", "fail", detail, result.elapsed_ms))
+        return DiagnosticReport(_safe_target(normalized), model, checks)
 
     if check_model_list:
         result = _request_json(normalized, "/models", api_key, None, timeout)

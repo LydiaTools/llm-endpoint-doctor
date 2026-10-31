@@ -6,6 +6,18 @@
 
 [English README](README.md) · [反馈问题](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
+## 检查 Responses API 地址
+
+普通聊天请求成功，不代表同一地址已经适配 Codex。当前源码提供一个独立的 Responses 文本检查：
+
+```bash
+llm-doctor --base-url https://api.example.com/v1 --model your-model-id --responses-only
+```
+
+它只向 `/responses` 发送一次请求，默认隐藏输入 API Key，也支持 `--api-key-env NAME` 或无密钥时使用 `--no-prompt`。请求可能消耗免费额度或产生费用。`--max-output-tokens` 设置输出上限，默认 128。本检查只确认非流式文本返回，不测试流式输出、工具调用、连续对话或 Codex 实际接入；失败只表示本次未确认。参考 [OpenAI 官方网关要求](https://learn.chatgpt.com/docs/enterprise/gateway-compatibility)。
+
+无需密钥试用：先运行 `python3 examples/mock_openai_server.py`，再运行 `llm-doctor --base-url http://127.0.0.1:8765/v1 --model demo-model --no-prompt --responses-only`。这是合成模拟服务，不代表真实供应商。该功能目前在最新源码中，v0.6.4 安装包不包含。
+
 ## 为什么做这个工具
 
 “兼容 OpenAI”仍可能遇到地址填错、模型 ID 已下线、服务商有特殊鉴权方式，或普通对话可用但流式不支持。LLM Endpoint Doctor 让你先做一次小检查，再把这些问题带进自己的应用调试。

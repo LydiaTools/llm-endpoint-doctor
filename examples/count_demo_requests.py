@@ -50,21 +50,22 @@ def main() -> None:
     try:
         base_url = f"http://127.0.0.1:{server.server_address[1]}/v1"
         for name, flags, expected in [
-            ("default", {}, (0, 1, 0, 0, 0)),
+            ("default", {}, (0, 1, 0, 0, 0, 0)),
+            ("responses-only", {"responses_only": True}, (0, 0, 0, 0, 0, 1)),
             ("all-options", {
                 "check_model_list": True, "check_streaming": True,
                 "check_stream_options": True, "check_json_mode": True,
                 "check_image_generation": True, "image_model": "demo-image-model",
                 "check_vision_input": True, "vision_model": "demo-vision-model",
                 "check_tool_calling": True,
-            }, (1, 4, 1, 1, 1)),
+            }, (1, 4, 1, 1, 1, 0)),
             ("image-check", {
                 "check_image_generation": True, "image_model": "demo-image-model",
-            }, (0, 1, 1, 0, 0)),
+            }, (0, 1, 1, 0, 0, 0)),
             ("vision-check", {
                 "check_vision_input": True, "vision_model": "demo-vision-model",
-            }, (0, 1, 0, 1, 0)),
-            ("tool-check", {"check_tool_calling": True}, (0, 1, 0, 0, 1)),
+            }, (0, 1, 0, 1, 0, 0)),
+            ("tool-check", {"check_tool_calling": True}, (0, 1, 0, 0, 1, 0)),
         ]:
             calls.clear()
             run_diagnostics(base_url=base_url, model="demo-model", **flags)
@@ -74,6 +75,7 @@ def main() -> None:
                 calls.count("POST /v1/images/generations"),
                 calls.count("POST /v1/chat/completions [vision]"),
                 calls.count("POST /v1/chat/completions [tool calling]"),
+                calls.count("POST /v1/responses"),
             )
             if counts != expected:
                 raise RuntimeError(f"Unexpected request counts for {name}: {counts}")
@@ -85,6 +87,7 @@ def main() -> None:
                 "image_generation_requests": counts[2],
                 "vision_input_requests": counts[3],
                 "tool_calling_requests": counts[4],
+                "responses_requests": counts[5],
             })
     finally:
         server.shutdown()
