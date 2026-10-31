@@ -2,6 +2,10 @@
 
 A model router can accept a chat request while a tool-calling request fails or returns a different response shape. A [FreeLLMAPI feature request](https://github.com/tashfeenahmed/freellmapi/issues/1438) discusses this distinction and proposes per-model capability labels. Here is a small manual check you can run before wiring a compatible endpoint into an agent.
 
+FreeLLMAPI already has its own opt-in model status probing: [v0.16.7](https://github.com/tashfeenahmed/freellmapi/releases/tag/v0.16.7) added scheduled and on-demand probes. Its [initial implementation](https://github.com/tashfeenahmed/freellmapi/pull/1492) sends real chat requests and records working/unavailable status; tool-capability classification was described as a follow-up. Those probes can use provider quota. Consult the upstream documentation for your version and configuration.
+
+The check below instead observes one chat response and one tool-call response through the endpoint you choose. When that endpoint is a router, the two requests may go to different models. It does not replace the router's per-model status or establish a durable capability label.
+
 [Project](../README.md) · [中文](chat-vs-tools.zh-CN.md)
 
 ## Try a keyless example

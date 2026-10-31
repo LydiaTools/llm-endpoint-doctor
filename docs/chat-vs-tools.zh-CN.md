@@ -2,6 +2,10 @@
 
 模型路由器能正常聊天，不代表带工具的请求也一定能通过。[FreeLLMAPI 的一个功能建议](https://github.com/tashfeenahmed/freellmapi/issues/1438)正在讨论如何区分这些能力。这里提供一个手动检查方法，方便接入 Agent 前先看一次实际响应。
 
+FreeLLMAPI 已经提供自己的可选模型状态探测：[v0.16.7](https://github.com/tashfeenahmed/freellmapi/releases/tag/v0.16.7) 加入了定时和按需探测。[最初的实现](https://github.com/tashfeenahmed/freellmapi/pull/1492)发送真实聊天请求，记录可用或不可用状态；工具调用能力分类当时列为后续工作。探测可能消耗供应商额度，具体请查阅所用版本的上游文档和配置。
+
+下文的检查则针对你选择的接入地址，各观察一次聊天和工具调用响应。如果地址背后是路由器，两次请求可能经过不同模型。它不能替代路由器的逐模型状态，也不能给模型生成持久的能力标签。
+
 [项目主页](../README.zh-CN.md) · [English](chat-vs-tools.md)
 
 ## 不需要密钥，先试一个例子
