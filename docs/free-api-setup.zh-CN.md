@@ -2,9 +2,26 @@
 
 [项目主页](../README.zh-CN.md) · [English](free-api-setup.md)
 
-**选服务商、复制准确模型ID，再做一次检查。** 先按[步骤安装v0.6.1发行包或当前源码](../README.zh-CN.md#快速开始)，下面的命令使用该环境里的`llm-doctor`。发行包已有这些输出控制选项，检查服务商不需要Git或源码目录；文末的本地模拟示例另需仓库中的源码文件。
+**选服务商、复制准确模型ID，再做一次检查。** 可以先直接运行下面的请求；如果需要诊断，再[安装v0.6.2发行包或当前源码](../README.zh-CN.md#快速开始)，使用后面的 `llm-doctor` 命令。文末本地模拟示例另需仓库中的源码文件。
 
 官方文档核对日期：**2026-10-21（Asia/Shanghai）**。本页核对了文档与本地请求流程，没有用真实服务商账号/Key验收三家的在线能力；下方复现是明确的模拟输入。
+
+## 不安装本工具，先发一条请求
+
+有 OpenRouter API Key 后，可以在 Bash/zsh 运行下面的示例，向其[免费模型路由](https://openrouter.ai/openrouter/free)发送一次聊天请求。路由会从可用免费模型中选择，而非固定某个模型。我们于 **2026-10-31** 再次核对了其公开接口和模型标签；未用真实 Key 在线运行此示例。
+
+```bash
+printf 'OpenRouter API key: '
+read -r -s OPENROUTER_API_KEY
+printf '\n'
+curl -sS -w '\nHTTP %{http_code}\n' https://openrouter.ai/api/v1/chat/completions \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openrouter/free","messages":[{"role":"user","content":"Say hello in one sentence."}],"max_tokens":64}'
+unset OPENROUTER_API_KEY
+```
+
+输入 Key 时终端不会回显。查看返回的 JSON 或 HTTP 错误，并核对账号的[当前免费模型额度](https://openrouter.ai/docs/api/reference/limits)。示例只发一次请求，不带模型回退数组。接入自己的应用时，Base URL 使用 `https://openrouter.ai/api/v1`，模型填 `openrouter/free`。也可以选择我维护的另一个 API：[ChinaGenAI 接入页](https://chinagenai.com/connect)列出了对应地址和 `free` 模型标签。
 
 ## 选接入路径
 

@@ -2,9 +2,26 @@
 
 [Project](../README.md) · [简体中文](free-api-setup.zh-CN.md)
 
-**Choose the provider, copy its exact model ID, then check it before adding it to your app.** Install the [v0.6.1 wheel or current source](../README.md#quick-start), then use that environment's `llm-doctor` command below. The wheel includes these output controls; you do not need Git or a source checkout for the provider checks. The local mock example at the end uses files from the source repository.
+**Choose the provider, copy its exact model ID, then check it before adding it to your app.** Start with the direct request below, or install the [v0.6.2 wheel or current source](../README.md#quick-start) for the `llm-doctor` checks. The wheel includes these output controls; the local mock example at the end uses files from the source repository.
 
 Official documentation reviewed on **2026-10-21 (Asia/Shanghai)**. Provider recipes are documentation-checked; no live provider account or key was used to validate them. The local reproduction below is a synthetic fixture.
+
+## Send one request without installing this tool
+
+With an OpenRouter API key, this Bash/zsh example sends one chat request to its [free-model router](https://openrouter.ai/openrouter/free). The router chooses an available free model rather than pinning one. The endpoint and model label were rechecked against OpenRouter's public documentation on **2026-10-31**; the example has not been run with a live key.
+
+```bash
+printf 'OpenRouter API key: '
+read -r -s OPENROUTER_API_KEY
+printf '\n'
+curl -sS -w '\nHTTP %{http_code}\n' https://openrouter.ai/api/v1/chat/completions \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openrouter/free","messages":[{"role":"user","content":"Say hello in one sentence."}],"max_tokens":64}'
+unset OPENROUTER_API_KEY
+```
+
+The key prompt does not echo your input. Check the returned JSON or HTTP error and your account's [current free-model limits](https://openrouter.ai/docs/api/reference/limits). This is a single request with no fallback array. For your own application, use the base URL `https://openrouter.ai/api/v1`, the same key, and `openrouter/free` as the model. If you would rather use the separate API I maintain, [ChinaGenAI's setup page](https://chinagenai.com/connect) lists its base URL and `free` model label.
 
 ## Pick your route
 

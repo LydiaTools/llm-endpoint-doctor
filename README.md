@@ -12,7 +12,7 @@ One local command checks your base URL, model ID, authentication, and first chat
 
 It complements provider directories: directories help you find an endpoint; this tool checks the endpoint you plan to use.
 
-**Connecting a free-tier model?** Start with [three provider recipes: Groq, Gemini and OpenRouter](docs/free-api-setup.md). Each includes the correct base URL, where to choose the model, and one copyable check. [中文接入指南](docs/free-api-setup.zh-CN.md).
+**Connecting a free-tier model?** [Start with a direct cURL request and three provider recipes](docs/free-api-setup.md) for Groq, Gemini and OpenRouter. The guide includes base URLs, model-selection links and copyable checks. [中文接入指南](docs/free-api-setup.zh-CN.md).
 
 **Starting an agent loop?** [Check the billing project and count requests first](docs/api-cost-preflight.md): Gemini's current spend-cap path, its reporting delay, and keyless request counts for the default and optional checks.
 

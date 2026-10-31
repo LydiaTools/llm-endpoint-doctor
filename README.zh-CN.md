@@ -12,7 +12,7 @@
 
 它补充 API 资源目录：目录帮你找到接口，本工具检查你准备使用的接口。
 
-**正在接入免费档模型？** [Groq、Gemini、OpenRouter 三家接入指南](docs/free-api-setup.zh-CN.md)列出正确地址、模型选择入口和可复制的单次检查。[English guide](docs/free-api-setup.md)。
+**正在接入免费档模型？** [从一条直接请求和三家接入指南开始](docs/free-api-setup.zh-CN.md)：包含 Groq、Gemini、OpenRouter 的地址、模型选择入口和可复制检查。[English guide](docs/free-api-setup.md)。
 
 **准备启动 Agent 循环？** [先核对计费项目和请求次数](docs/api-cost-preflight.zh-CN.md)：包含 Gemini 当前支出上限入口、报表延迟，以及默认和可选检查的无需 Key 实测请求数。
 
