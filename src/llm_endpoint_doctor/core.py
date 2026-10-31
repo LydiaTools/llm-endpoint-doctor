@@ -4,11 +4,14 @@ import base64
 import hashlib
 import ipaddress
 import json
+import math
 import socket
 import struct
 import time
 import zlib
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from http.client import HTTPResponse
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -89,6 +92,28 @@ class _Response:
     payload: Any = None
     transport_error: str | None = None
     route_fingerprint: bytes | None = None
+    retry_after_seconds: int | None = None
+
+
+def _retry_after_seconds(headers: Any) -> int | None:
+    """Accept one bounded Retry-After value; never report raw header bytes."""
+    values = headers.get_all("Retry-After", []) if headers is not None else []
+    if len(values) != 1:
+        return None
+    value = values[0].strip()
+    if not value.isascii() or len(value) > 64:
+        return None
+    if value.isdigit():
+        seconds = int(value)
+    else:
+        try:
+            deadline = parsedate_to_datetime(value)
+            if deadline is None or deadline.tzinfo is None:
+                return None
+            seconds = max(0, math.ceil((deadline - datetime.now(timezone.utc)).total_seconds()))
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return seconds if 0 <= seconds <= 86400 else None
 
 
 def _route_fingerprint(headers: Any) -> bytes | None:
@@ -184,15 +209,21 @@ def _safe_target(base_url: str) -> str:
     return f"{parsed.scheme}://{host}"
 
 
-def _error_detail(status_code: int | None, transport_error: str | None) -> str:
+def _error_detail(status_code: int | None, transport_error: str | None, retry_after_seconds: int | None = None) -> str:
     if status_code == 401 or status_code == 403:
         return f"Authentication or access was rejected ({status_code}); check the key and provider access."
     if status_code == 404:
         return "Endpoint or model was not found (404); check the base URL and exact model ID."
     if status_code == 429:
-        return "Provider rate limit returned 429; the request did not complete."
+        detail = "Provider rate limit returned 429; the request did not complete."
+        if retry_after_seconds is not None:
+            detail += f" Retry-After suggests waiting {retry_after_seconds} seconds; no retry was attempted."
+        return detail
     if status_code is not None and status_code >= 500:
-        return f"Provider returned server error {status_code}."
+        detail = f"Provider returned server error {status_code}."
+        if status_code == 503 and retry_after_seconds is not None:
+            detail += f" Retry-After suggests waiting {retry_after_seconds} seconds; no retry was attempted."
+        return detail
     if transport_error == "response-too-large" and (status_code is None or 200 <= status_code < 300):
         return "Response exceeded the local safety limit; the response body was omitted."
     if status_code is not None:
@@ -225,6 +256,7 @@ def _request_json(
     request = Request(f"{base_url}{path}", data=data, headers=headers)
     start = time.monotonic()
     route_fingerprint = None
+    retry_after_seconds = None
     try:
         with opener.open(request, timeout=timeout) as response:
             if capture_route and 200 <= response.status < 300:
@@ -234,6 +266,8 @@ def _request_json(
     except HTTPError as exc:
         raw = exc.read(max_response_bytes + 1)
         status_code = exc.code
+        if status_code in (429, 503):
+            retry_after_seconds = _retry_after_seconds(exc.headers)
     except (TimeoutError, socket.timeout):
         return _Response(None, round((time.monotonic() - start) * 1000), transport_error="timeout")
     except URLError as exc:
@@ -249,12 +283,12 @@ def _request_json(
         return _Response(None, round((time.monotonic() - start) * 1000), transport_error="network")
     elapsed = round((time.monotonic() - start) * 1000)
     if len(raw) > max_response_bytes:
-        return _Response(status_code, elapsed, transport_error="response-too-large")
+        return _Response(status_code, elapsed, transport_error="response-too-large", retry_after_seconds=retry_after_seconds)
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         payload = None
-    return _Response(status_code, elapsed, payload=payload, route_fingerprint=route_fingerprint)
+    return _Response(status_code, elapsed, payload=payload, route_fingerprint=route_fingerprint, retry_after_seconds=retry_after_seconds)
 
 
 def ssl_error_types() -> tuple[type[BaseException], ...]:
@@ -444,6 +478,7 @@ def _request_stream(
         headers=headers,
     )
     start = time.monotonic()
+    retry_after_seconds = None
     try:
         with opener.open(request, timeout=timeout) as response:
             raw = response.read(1_000_001)
@@ -451,6 +486,8 @@ def _request_stream(
     except HTTPError as exc:
         raw = exc.read(1_000_001)
         status_code = exc.code
+        if status_code in (429, 503):
+            retry_after_seconds = _retry_after_seconds(exc.headers)
     except (TimeoutError, socket.timeout):
         return _Response(None, round((time.monotonic() - start) * 1000), transport_error="timeout")
     except URLError as exc:
@@ -463,7 +500,7 @@ def _request_stream(
         return _Response(None, round((time.monotonic() - start) * 1000), transport_error="network")
     elapsed = round((time.monotonic() - start) * 1000)
     if len(raw) > 1_000_000:
-        return _Response(status_code, elapsed, transport_error="response-too-large")
+        return _Response(status_code, elapsed, transport_error="response-too-large", retry_after_seconds=retry_after_seconds)
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -500,7 +537,7 @@ def _request_stream(
                 saw_stream_error = True
         if _output_limited(chunk):
             saw_length_limit = True
-    return _Response(status_code, elapsed, payload={
+    return _Response(status_code, elapsed, retry_after_seconds=retry_after_seconds, payload={
         "saw_done": saw_done, "saw_usage": saw_usage, "saw_length_limit": saw_length_limit,
         "saw_stream_error": saw_stream_error,
     })
@@ -573,7 +610,7 @@ def run_diagnostics(
             else:
                 checks.append(CheckResult("model catalog", "warn", "Catalog response was not in the expected format.", result.elapsed_ms))
         else:
-            checks.append(CheckResult("model catalog", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+            checks.append(CheckResult("model catalog", "warn", _error_detail(result.status_code, result.transport_error, result.retry_after_seconds), result.elapsed_ms))
 
     result = _request_json(
         normalized,
@@ -592,7 +629,7 @@ def run_diagnostics(
     elif result.status_code is not None and 200 <= result.status_code < 300:
         checks.append(CheckResult("chat completion", "fail", "HTTP succeeded, but no chat text was found in the expected response shape.", result.elapsed_ms))
     else:
-        checks.append(CheckResult("chat completion", "fail", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+        checks.append(CheckResult("chat completion", "fail", _error_detail(result.status_code, result.transport_error, result.retry_after_seconds), result.elapsed_ms))
 
     if check_streaming:
         result = _request_stream(normalized, api_key, _chat_body(model, stream=True, **body_options), timeout)
@@ -605,7 +642,7 @@ def run_diagnostics(
         elif result.status_code is not None and 200 <= result.status_code < 300:
             checks.append(CheckResult("streaming", "warn", "HTTP succeeded, but no SSE completion marker was detected.", result.elapsed_ms))
         else:
-            checks.append(CheckResult("streaming", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+            checks.append(CheckResult("streaming", "warn", _error_detail(result.status_code, result.transport_error, result.retry_after_seconds), result.elapsed_ms))
 
     if check_stream_options:
         body = _chat_body(model, stream=True, **body_options)
@@ -623,7 +660,7 @@ def run_diagnostics(
         elif result.status_code is not None and 200 <= result.status_code < 300:
             checks.append(CheckResult("stream options", "warn", "HTTP succeeded, but no SSE completion marker was detected.", result.elapsed_ms))
         else:
-            checks.append(CheckResult("stream options", "warn", f"The include_usage streaming request did not complete. {_error_detail(result.status_code, result.transport_error)}", result.elapsed_ms))
+            checks.append(CheckResult("stream options", "warn", f"The include_usage streaming request did not complete. {_error_detail(result.status_code, result.transport_error, result.retry_after_seconds)}", result.elapsed_ms))
 
     if check_json_mode:
         result = _request_json(
@@ -644,7 +681,7 @@ def run_diagnostics(
                 valid = False
             checks.append(CheckResult("JSON mode", "pass" if valid else "warn", "Returned a JSON object." if valid else "Request succeeded, but the response content was not a JSON object.", result.elapsed_ms))
         else:
-            checks.append(CheckResult("JSON mode", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+            checks.append(CheckResult("JSON mode", "warn", _error_detail(result.status_code, result.transport_error, result.retry_after_seconds), result.elapsed_ms))
 
     if check_image_generation:
         result = _request_json(
@@ -681,7 +718,7 @@ def run_diagnostics(
                 result.elapsed_ms,
             ))
         else:
-            checks.append(CheckResult("image generation", "fail", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+            checks.append(CheckResult("image generation", "fail", _error_detail(result.status_code, result.transport_error, result.retry_after_seconds), result.elapsed_ms))
 
     if check_vision_input:
         vision_model = vision_model or model
@@ -725,7 +762,7 @@ def run_diagnostics(
         elif result.status_code is not None and 200 <= result.status_code < 300:
             checks.append(CheckResult("vision input", "fail", "HTTP succeeded, but no chat text was found in the expected response shape.", result.elapsed_ms))
         else:
-            checks.append(CheckResult("vision input", "fail", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+            checks.append(CheckResult("vision input", "fail", _error_detail(result.status_code, result.transport_error, result.retry_after_seconds), result.elapsed_ms))
 
     if check_tool_calling:
         result = _request_json(
@@ -759,7 +796,7 @@ def run_diagnostics(
                 result.elapsed_ms,
             ))
         else:
-            checks.append(CheckResult("tool calling", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+            checks.append(CheckResult("tool calling", "warn", _error_detail(result.status_code, result.transport_error, result.retry_after_seconds), result.elapsed_ms))
 
         if compare_route_headers:
             if chat_route_fingerprint is None or tool_route_fingerprint is None:

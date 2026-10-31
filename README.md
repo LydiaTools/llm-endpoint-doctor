@@ -24,14 +24,14 @@ It complements provider directories: directories help you find an endpoint; this
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
 
-Prefer a prebuilt package? Download the [v0.6.3 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.3/llm_endpoint_doctor-0.6.3-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.3/llm_endpoint_doctor-0.6.3-py3-none-any.whl.sha256). This is an alpha preview.
+Prefer a prebuilt package? Download the [v0.6.4 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.4/llm_endpoint_doctor-0.6.4-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.4/llm_endpoint_doctor-0.6.4-py3-none-any.whl.sha256). This is an alpha preview.
 
 From the folder containing the downloaded wheel, install it without cloning the repository:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.3-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.4-py3-none-any.whl
 llm-doctor --version
 ```
 
@@ -192,6 +192,7 @@ If the named environment variable is missing or empty, the command stops before 
 - **Vision input (optional):** With `--check-vision-input`, sends one additional chat request with a built-in synthetic PNG data URL. It checks the response against four expected color quadrants; a mismatch stays unconfirmed. This is not a vision-quality benchmark.
 - **Tool calling (optional):** With `--check-tool-calling`, sends one additional chat request with a fixed function schema. It checks for one function call with the expected name and JSON arguments; it never executes the function and does not grade semantic reliability.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
+- **Retry timing:** For HTTP 429 or 503, v0.6.4 and current source show a valid `Retry-After` as a bounded wait in seconds. It never retries automatically; HTTP-date values depend on the local clock. The older v0.6.3 wheel does not include this hint.
 
 For a single-line JSON event with null or empty `choices`, nonempty `error_type` and `error_message` fields are also reported as a stream error. This control uses a synthetic event based on fields described in [a public issue](https://github.com/NousResearch/hermes-agent/issues/65631); it is not a captured wire response or a live provider test. Provider messages are not printed.
 
