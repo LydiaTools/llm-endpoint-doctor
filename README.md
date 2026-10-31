@@ -182,6 +182,8 @@ A pass means the response matched the expected clockwise color sequence. A respo
 
 Run `llm-doctor --check-tool-calling` to send one extra `POST /chat/completions` with a single required function definition. The check passes only when the endpoint returns one `tool_calls` result with the expected function name and valid JSON arguments. The function is never executed. This confirms one response shape for the selected model; it is not a semantic tool-use benchmark or a guarantee that every schema, prompt, stream consumer, or future request will work. The request can use provider quota or incur a charge.
 
+**The function appeared, but the agent stopped?** Some responses include a tool call while reporting `finish_reason: stop`. Current source flags this combination separately: the call is present, but a client may treat the turn as complete. Try `python3 examples/tool_finish_reason.py` from the source checkout for two synthetic local responses; no key or real provider is used. The v0.7.1 wheel predates this specific warning. See the reported [OmniRoute issue](https://github.com/cheaper-inference/OmniRoute/issues/18270) for an example of why the distinction can matter; the tool does not reproduce or test OmniRoute itself.
+
 ## Non-interactive and CI use
 
 For a keyless endpoint, skip the prompt explicitly:
