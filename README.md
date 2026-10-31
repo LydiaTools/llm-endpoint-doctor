@@ -12,6 +12,14 @@ One local command checks your base URL, model ID, authentication, and first chat
 
 It complements provider directories: directories help you find an endpoint; this tool checks the endpoint you plan to use.
 
+**Chat works, but will your Agent's API route work too?** Run `python3 examples/chat_responses_gap.py` from a source checkout. An original local mock accepts chat but returns 404 for `/responses`; the doctor reports each result separately. Two loopback requests, no key or real model. A passing text check alone does not prove agent compatibility.
+
+```text
+Synthetic local gateway: chat available; Responses returns HTTP 404
+Chat Completions: PASS
+Responses text: NOT CONFIRMED
+```
+
 **Connecting a free-tier model?** [Start with a direct cURL request and three provider recipes](docs/free-api-setup.md) for Groq, Gemini and OpenRouter. The guide includes base URLs, model-selection links and copyable checks. [中文接入指南](docs/free-api-setup.zh-CN.md).
 
 **Chat works but your agent needs tool calls?** [Try a keyless chat-vs-tools example](docs/chat-vs-tools.md), then check your own compatible router.

@@ -6,6 +6,8 @@
 
 [English README](README.md) · [反馈问题](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
+**聊天接口正常，Agent 需要的接口也能用吗？** 在源码目录运行 `python3 examples/chat_responses_gap.py`：本地虚构服务接受聊天，却对 `/responses` 返回 404；工具会分别报告结果。只发送两次本机请求，不使用密钥或真实模型。文本检查通过也不代表 Agent 已完全兼容。
+
 ## 检查 Responses API 地址
 
 普通聊天请求成功，不代表同一地址已经适配 Codex。当前源码提供一个独立的 Responses 文本检查：
