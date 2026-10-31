@@ -31,6 +31,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-vision-input", action="store_true", help="Also send one chat request with a built-in synthetic PNG; may incur provider charges")
     parser.add_argument("--vision-model", help="Model ID for the vision check (default: --model); only with --check-vision-input")
     parser.add_argument("--check-tool-calling", action="store_true", help="Also send one function-calling request and validate its returned structure; the function is never executed")
+    parser.add_argument("--compare-route-headers", action="store_true", help="Compare X-Routed-Via headers for chat and tool responses without printing values; requires --check-tool-calling")
     key_group = parser.add_mutually_exclusive_group()
     key_group.add_argument("--api-key-env", metavar="NAME", help="Read the API key from an environment variable")
     key_group.add_argument("--no-prompt", action="store_true", help="Skip the hidden key prompt (for keyless endpoints)")
@@ -60,6 +61,8 @@ def _print_report(report: DiagnosticReport) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.compare_route_headers and not args.check_tool_calling:
+        parser.error("--compare-route-headers requires --check-tool-calling")
     if not 1 <= args.timeout <= 120:
         parser.error("--timeout must be between 1 and 120 seconds")
     if args.max_output_tokens is not None and not 1 <= args.max_output_tokens <= 8192:
@@ -119,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             check_vision_input=args.check_vision_input,
             vision_model=args.vision_model,
             check_tool_calling=args.check_tool_calling,
+            compare_route_headers=args.compare_route_headers,
         )
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled.", file=sys.stderr)

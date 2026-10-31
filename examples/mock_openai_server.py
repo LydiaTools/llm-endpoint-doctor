@@ -16,6 +16,7 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
     server_version = "LLMEndpointDoctorDemo/1.0"
     minimum_output_tokens = 0
     reject_tools = False
+    split_routes = False
 
     def log_message(self, *_: Any) -> None:
         # Do not print request headers, keys, or request bodies.
@@ -25,6 +26,8 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if self.split_routes and hasattr(self, "demo_route"):
+            self.send_header("X-Routed-Via", self.demo_route)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -64,6 +67,9 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
         if not isinstance(model, str) or not model:
             self._send_json({"error": {"message": "A model is required"}}, 400)
             return
+
+        if self.split_routes:
+            self.demo_route = "example/tool-model" if request.get("tools") else "example/chat-model"
 
         if self.path == "/v1/images/generations":
             prompt = request.get("prompt")
@@ -165,6 +171,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8765, help="Loopback port (default: 8765)")
     parser.add_argument("--simulate-token-limit", action="store_true", help="Synthetic length-ended response below 64 output tokens; no real model")
     parser.add_argument("--reject-tools", action="store_true", help="Synthetic chat succeeds while tool requests return HTTP 400; no real model")
+    parser.add_argument("--split-routes", action="store_true", help="Return different fictional route headers for chat and tool calls")
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
@@ -172,6 +179,7 @@ def main() -> int:
     try:
         MockOpenAIHandler.minimum_output_tokens = 64 if args.simulate_token_limit else 0
         MockOpenAIHandler.reject_tools = args.reject_tools
+        MockOpenAIHandler.split_routes = args.split_routes
         server = ThreadingHTTPServer(("127.0.0.1", args.port), MockOpenAIHandler)
     except OSError as exc:
         parser.error(f"could not listen on 127.0.0.1:{args.port}: {exc}")
@@ -180,6 +188,8 @@ def main() -> int:
         print("Synthetic token-limit mode: caps below 64 return finish_reason=length; no real model is running.")
     if args.reject_tools:
         print("Synthetic tool-rejection mode: ordinary chat succeeds, tool requests return HTTP 400; no real model is running.")
+    if args.split_routes:
+        print("Synthetic split-route mode: chat and tool requests receive different fictional route labels.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

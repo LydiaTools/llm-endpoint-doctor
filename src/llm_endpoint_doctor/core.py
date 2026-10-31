@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import ipaddress
 import json
 import socket
@@ -87,6 +88,22 @@ class _Response:
     elapsed_ms: int
     payload: Any = None
     transport_error: str | None = None
+    route_fingerprint: bytes | None = None
+
+
+def _route_fingerprint(headers: Any) -> bytes | None:
+    """Compare one bounded route label in memory; never place it in a report."""
+    values = headers.get_all("X-Routed-Via", [])
+    if len(values) != 1:
+        return None
+    value = values[0].strip()
+    # FreeLLMAPI also emits cache/idempotency markers, which are not routes.
+    if not 3 <= len(value) <= 256 or not value.isascii() or any(ord(c) < 33 or ord(c) > 126 or c == "," for c in value):
+        return None
+    provider, separator, model = value.partition("/")
+    if not separator or not provider or not model:
+        return None
+    return hashlib.sha256(value.encode("ascii")).digest()
 
 
 def _origin_key(parsed: Any) -> tuple[str, str, int]:
@@ -194,6 +211,7 @@ def _request_json(
     body: dict[str, Any] | None,
     timeout: float,
     max_response_bytes: int = _MAX_JSON_RESPONSE_BYTES,
+    capture_route: bool = False,
 ) -> _Response:
     parsed = urlsplit(base_url)
     origin = _origin_key(parsed)
@@ -206,8 +224,11 @@ def _request_json(
         headers["Authorization"] = f"Bearer {api_key}"
     request = Request(f"{base_url}{path}", data=data, headers=headers)
     start = time.monotonic()
+    route_fingerprint = None
     try:
         with opener.open(request, timeout=timeout) as response:
+            if capture_route and 200 <= response.status < 300:
+                route_fingerprint = _route_fingerprint(response.headers)
             raw = response.read(max_response_bytes + 1)
             status_code = response.status
     except HTTPError as exc:
@@ -233,7 +254,7 @@ def _request_json(
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         payload = None
-    return _Response(status_code, elapsed, payload=payload)
+    return _Response(status_code, elapsed, payload=payload, route_fingerprint=route_fingerprint)
 
 
 def ssl_error_types() -> tuple[type[BaseException], ...]:
@@ -501,6 +522,7 @@ def run_diagnostics(
     check_vision_input: bool = False,
     vision_model: str | None = None,
     check_tool_calling: bool = False,
+    compare_route_headers: bool = False,
 ) -> DiagnosticReport:
     normalized = normalize_base_url(base_url)
     model = model.strip()
@@ -516,6 +538,8 @@ def run_diagnostics(
         raise ValueError("Output token limit must be an integer between 1 and 8192.")
     if token_field not in ("max_tokens", "max_completion_tokens"):
         raise ValueError("Token field must be max_tokens or max_completion_tokens.")
+    if compare_route_headers and not check_tool_calling:
+        raise ValueError("Route comparison requires the tool-calling check.")
     if check_image_generation:
         if image_model is None or not image_model.strip():
             raise ValueError("An image model ID is required for the image-generation check.")
@@ -557,7 +581,9 @@ def run_diagnostics(
         api_key,
         _chat_body(model, **body_options),
         timeout,
+        capture_route=compare_route_headers,
     )
+    chat_route_fingerprint = result.route_fingerprint
     content = _message_content(result.payload)
     if result.status_code is not None and 200 <= result.status_code < 300 and _output_limited(result.payload):
         checks.append(CheckResult("chat completion", "fail", _OUTPUT_LIMIT_DETAIL, result.elapsed_ms))
@@ -708,7 +734,9 @@ def run_diagnostics(
             api_key,
             _tool_call_body(model, max_output_tokens=max_output_tokens, token_field=token_field),
             timeout,
+            capture_route=compare_route_headers,
         )
+        tool_route_fingerprint = result.route_fingerprint
         if result.status_code is not None and 200 <= result.status_code < 300 and _output_limited(result.payload):
             checks.append(CheckResult(
                 "tool calling",
@@ -732,6 +760,15 @@ def run_diagnostics(
             ))
         else:
             checks.append(CheckResult("tool calling", "warn", _error_detail(result.status_code, result.transport_error), result.elapsed_ms))
+
+        if compare_route_headers:
+            if chat_route_fingerprint is None or tool_route_fingerprint is None:
+                detail = "Comparison unavailable: both successful responses need one usable X-Routed-Via route label."
+            elif chat_route_fingerprint == tool_route_fingerprint:
+                detail = "The two X-Routed-Via header values matched; this alone does not prove identical routing."
+            else:
+                detail = "The two X-Routed-Via header values differed; check the router for details."
+            checks.append(CheckResult("route header comparison", "info", detail))
 
     return DiagnosticReport(
         _safe_target(normalized), model, checks,
