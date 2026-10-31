@@ -53,8 +53,29 @@ llm-doctor --base-url http://127.0.0.1:8765/v1 --model demo-model --no-prompt --
 llm-doctor --base-url http://localhost:3001/v1 --model auto --max-output-tokens 128 --check-tool-calling --compare-route-headers
 ```
 
-在隐藏输入提示处填写自己的统一密钥；如果你的安装使用其他地址或模型别名，请替换。这个命令参考该项目公开的客户端设置；**我们尚未连接真实 FreeLLMAPI 实例或上游服务验证它**。
+在隐藏输入提示处填写自己的统一密钥；如果你的安装使用其他地址或模型别名，请替换。这个命令参考该项目公开的客户端设置。下面的集成示例运行了真实 FreeLLMAPI 应用代码，使用的是虚构上游；尚未测试桌面安装版或真实供应商。
 
 诊断器发送两次独立请求：一次普通聊天、一次指定工具调用。路由器自身可能重试或切换上游，因此实际上游请求次数和服务模型可能不同。FreeLLMAPI 文档说明提供 [`X-Routed-Via` 响应头](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/api/01-rest-api.md#response-headers)；可选比较检查两次返回的标签是否相同，不显示原始标签，也不证明标签准确。诊断器不执行返回的函数，不做可用率评测，不定时运行，也不修改路由器。额度或费用由你的实际配置决定。
 
 工具调用 `PASS` 表示这一次响应符合预期函数名和参数格式。`WARN` 表示本次未能确认，HTTP 错误、输出长度不足、响应格式不同或临时故障都可能导致警告，**不能证明模型永远不支持工具调用**。如果要确认具体模型，请结合路由器日志或路由信息，选择合适的直接路径；不要假定两次 `auto` 请求一定落到同一模型。
+
+## 使用真实路由代码复现
+
+我们在 macOS、Node 22.23.0 和 Python 3.9 下，用已安装的 v0.6.3 wheel 测试了 FreeLLMAPI 源码提交 [`6bf1775`](https://github.com/tashfeenahmed/freellmapi/tree/6bf17754912f280a57b6e24e520f432f62ed10d0)。示例在本机启动真实应用，使用**内存数据库**、两个虚构模型配置和模拟供应商响应。路由器选择了不同模型，诊断器报告路由头不同，且没有打印标签值。示例没有启动上游应用的常规后台服务，没有连接真实供应商，也没有验证桌面版。
+
+如需在 macOS/Linux 复现，先在虚拟环境安装 [v0.6.3 wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/tag/v0.6.3)，记下 `llm-doctor` 可执行文件的绝对路径。然后在**新的临时目录**检出上游固定版本：
+
+```sh
+git clone https://github.com/tashfeenahmed/freellmapi.git freellmapi-demo
+cd freellmapi-demo
+git checkout 6bf17754912f280a57b6e24e520f432f62ed10d0
+npm ci --ignore-scripts --no-audit --no-fund --workspace server --workspace shared
+```
+
+Node 需要 22.13 至 24，以满足内置 SQLite 和上游支持的版本范围；目前只测试了 macOS 上的 Node 22.23.0。安装依赖需要联网和磁盘空间。另行克隆本项目以取得示例文件，把以下两个绝对路径换成实际路径：
+
+```sh
+./node_modules/.bin/tsx /absolute/path/to/llm-endpoint-doctor/examples/freellmapi-route-demo.mts "$PWD" /absolute/path/to/venv/bin/llm-doctor
+```
+
+示例会清除自身进程继承的供应商密钥和代理设置，使用临时用户目录及虚构密钥，并拦截供应商 `fetch` 调用返回虚构响应。它是复现样例，**不是通用网络沙箱**。它核对两次虚构上游调用、响应头不同的结果，以及诊断器输出中没有路由标签和临时密钥。应用代码与模型目录来自你选择的源码目录；更换版本或环境可能得到不同结果。在本次测试的版本中，示例没有打开或修改用户已有数据库。

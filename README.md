@@ -16,6 +16,8 @@ It complements provider directories: directories help you find an endpoint; this
 
 **Chat works but your agent needs tool calls?** [Try a keyless chat-vs-tools example](docs/chat-vs-tools.md), then check your own compatible router.
 
+**Using FreeLLMAPI?** [Reproduce a two-route check](docs/chat-vs-tools.md#reproduce-against-the-real-router-code) with its actual router code and synthetic upstream responses.
+
 **Starting an agent loop?** [Check the billing project and count requests first](docs/api-cost-preflight.md): Gemini's current spend-cap path, its reporting delay, and keyless request counts for the default and optional checks.
 
 ## Quick start
