@@ -40,20 +40,20 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id --respons
 
 It sends one request to `/responses` using a hidden API key prompt (or `--api-key-env NAME` / `--no-prompt`). The request can use paid credits or free quota. `--max-output-tokens` sets the Responses output cap; the default is 128. This is an early text-shape check: it does not test streaming, tools, follow-up turns, or Codex itself. A failure means the check did not confirm this combination, not that the entire provider lacks support. See [OpenAI's gateway requirements](https://learn.chatgpt.com/docs/enterprise/gateway-compatibility).
 
-To try locally without a key, from a source checkout start `python3 examples/mock_openai_server.py`, then run `llm-doctor --base-url http://127.0.0.1:8765/v1 --model demo-model --no-prompt --responses-only`. The mock is synthetic; it does not test a provider. The Responses text probe is included in the v0.7.1 wheel; the mock server is available in the source checkout.
+To try locally without a key, from a source checkout start `python3 examples/mock_openai_server.py`, then run `llm-doctor --base-url http://127.0.0.1:8765/v1 --model demo-model --no-prompt --responses-only`. The mock is synthetic; it does not test a provider. The Responses text probe is included in the v0.7.2 wheel; the mock server is available in the source checkout.
 
 ## Quick start
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
 
-Prefer a prebuilt package? Download the [v0.7.1 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.1/llm_endpoint_doctor-0.7.1-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.1/llm_endpoint_doctor-0.7.1-py3-none-any.whl.sha256). This is an alpha preview.
+Prefer a prebuilt package? Download the [v0.7.2 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.2/llm_endpoint_doctor-0.7.2-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.2/llm_endpoint_doctor-0.7.2-py3-none-any.whl.sha256). This is an alpha preview.
 
 From the folder containing the downloaded wheel, install it without cloning the repository:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.7.1-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.7.2-py3-none-any.whl
 llm-doctor --version
 ```
 
@@ -182,7 +182,7 @@ A pass means the response matched the expected clockwise color sequence. A respo
 
 Run `llm-doctor --check-tool-calling` to send one extra `POST /chat/completions` with a single required function definition. The check passes only when the endpoint returns one `tool_calls` result with the expected function name and valid JSON arguments. The function is never executed. This confirms one response shape for the selected model; it is not a semantic tool-use benchmark or a guarantee that every schema, prompt, stream consumer, or future request will work. The request can use provider quota or incur a charge.
 
-**The function appeared, but the agent stopped?** Some responses include a tool call while reporting `finish_reason: stop`. Current source flags this combination separately: the call is present, but a client may treat the turn as complete. Try `python3 examples/tool_finish_reason.py` from the source checkout for two synthetic local responses; no key or real provider is used. The v0.7.1 wheel predates this specific warning. See the reported [OmniRoute issue](https://github.com/cheaper-inference/OmniRoute/issues/18270) for an example of why the distinction can matter; the tool does not reproduce or test OmniRoute itself.
+**The function appeared, but the agent stopped?** Some responses include a tool call while reporting `finish_reason: stop`. Version 0.7.2 flags this combination separately: the call is present, but a client may treat the turn as complete. Try `python3 examples/tool_finish_reason.py` from the source checkout for two synthetic local responses; no key or real provider is used. This warning is included in the v0.7.2 wheel. See the reported [OmniRoute issue](https://github.com/cheaper-inference/OmniRoute/issues/18270) for an example of why the distinction can matter; the tool does not reproduce or test OmniRoute itself.
 
 ## Non-interactive and CI use
 
