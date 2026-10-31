@@ -373,6 +373,37 @@ class CoreTests(unittest.TestCase):
         self.assertNotIn("not-ok", json.dumps(report.to_dict()))
         self.assertEqual(len(_State.requests), 2)
 
+    def test_tool_calling_reports_stop_with_expected_call_without_confirming_readiness(self) -> None:
+        _State.tool_call_response = {
+            "choices": [{"finish_reason": "stop", "message": {"tool_calls": [{
+                "type": "function", "function": {
+                    "name": "endpoint_doctor_probe", "arguments": '{"status":"ok"}',
+                },
+            }]}}],
+        }
+        report = run_diagnostics(self.base_url, "fixture-model", "private-test-key", check_tool_calling=True)
+        check = next(item for item in report.checks if item.name == "tool calling")
+        self.assertEqual(check.status, "warn")
+        self.assertIsNone(report.tool_calling_ready)
+        self.assertIn("finish_reason was stop", check.detail)
+        self.assertIn("may treat the turn as complete", check.detail)
+        self.assertNotIn("private-test-key", json.dumps(report.to_dict()))
+        self.assertNotIn('{"status":"ok"}', json.dumps(report.to_dict()))
+        self.assertEqual(len(_State.requests), 2)
+
+    def test_stop_without_expected_function_is_not_a_finish_reason_mismatch(self) -> None:
+        for calls in ([], [{"function": {"name": "other", "arguments": '{"status":"ok"}'}}],
+                      [{"function": {"name": "endpoint_doctor_probe", "arguments": '{"status":"wrong"}'}}]):
+            with self.subTest(calls=calls):
+                _State.requests = []
+                _State.tool_call_response = {"choices": [{"finish_reason": "stop", "message": {"tool_calls": calls}}]}
+                report = run_diagnostics(self.base_url, "fixture-model", check_tool_calling=True)
+                check = next(item for item in report.checks if item.name == "tool calling")
+                self.assertEqual(check.status, "warn")
+                self.assertIsNone(report.tool_calling_ready)
+                self.assertNotIn("finish_reason was stop", check.detail)
+                self.assertEqual(len(_State.requests), 2)
+
     def test_tool_calling_rejection_is_optional_warning_and_sanitized(self) -> None:
         _State.tool_call_status = 400
         _State.tool_call_response = {"error": {"message": "private-tool-provider-error"}}

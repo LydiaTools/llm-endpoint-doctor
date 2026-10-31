@@ -464,14 +464,14 @@ def _tool_call_body(
     }
 
 
-def _tool_call_is_valid(payload: Any) -> bool:
+def _tool_call_matches(payload: Any, finish_reason: str) -> bool:
     if not isinstance(payload, dict):
         return False
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         return False
     choice = choices[0]
-    if choice.get("finish_reason") != "tool_calls":
+    if choice.get("finish_reason") != finish_reason:
         return False
     message = choice.get("message")
     if not isinstance(message, dict):
@@ -490,6 +490,10 @@ def _tool_call_is_valid(payload: Any) -> bool:
     except json.JSONDecodeError:
         return False
     return parsed == {"status": "ok"}
+
+
+def _tool_call_is_valid(payload: Any) -> bool:
+    return _tool_call_matches(payload, "tool_calls")
 
 
 def _request_stream(
@@ -837,6 +841,15 @@ def run_diagnostics(
                 "tool calling",
                 "pass",
                 "Returned one valid function call with the expected argument shape. The function was not executed.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and _tool_call_matches(result.payload, "stop"):
+            checks.append(CheckResult(
+                "tool calling",
+                "warn",
+                "The expected function and arguments appeared, but finish_reason was stop rather than tool_calls; "
+                "a client may treat the turn as complete. Tool-call compatibility was not confirmed. "
+                "The function was not executed.",
                 result.elapsed_ms,
             ))
         elif result.status_code is not None and 200 <= result.status_code < 300:

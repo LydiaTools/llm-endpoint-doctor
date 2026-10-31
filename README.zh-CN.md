@@ -179,6 +179,8 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id --check-t
 
 该检查会额外发送一次带单个必选函数定义的 `POST /chat/completions`。只有接口返回一条 `tool_calls`，且函数名称和 JSON 参数都符合预期时才通过。不会执行函数。它只确认所选模型的一种响应结构，不是语义能力评测，也不保证所有 Schema、提示词、流式消费者或后续请求都可用。服务商可能计量该请求或收费。
 
+**函数调用出现了，Agent 却停下来了？** 有些响应同时包含工具调用和 `finish_reason: stop`。当前源码会单独提示这种情况：函数调用已出现，但客户端可能将本轮视为结束。在源码目录运行 `python3 examples/tool_finish_reason.py`，可用两种本地模拟响应体验结果，无需密钥或真实服务商。v0.7.1 安装包早于这项提示。[OmniRoute 的相关报告](https://github.com/cheaper-inference/OmniRoute/issues/18270)展示了这种区别为何可能影响 Agent；本工具没有复现或测试 OmniRoute 本身。
+
 ## 非交互模式与 CI
 
 无 Key 接口可以显式跳过输入提示：
