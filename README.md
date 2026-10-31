@@ -20,6 +20,18 @@ It complements provider directories: directories help you find an endpoint; this
 
 **Starting an agent loop?** [Check the billing project and count requests first](docs/api-cost-preflight.md): Gemini's current spend-cap path, its reporting delay, and keyless request counts for the default and optional checks.
 
+## Check a Responses API route
+
+Using a gateway for Codex? A working Chat Completions endpoint does not establish Responses API compatibility. The current source offers a separate, single non-streaming text probe:
+
+```bash
+llm-doctor --base-url https://api.example.com/v1 --model your-model-id --responses-only
+```
+
+It sends one request to `/responses` using a hidden API key prompt (or `--api-key-env NAME` / `--no-prompt`). The request can use paid credits or free quota. `--max-output-tokens` sets the Responses output cap; the default is 128. This is an early text-shape check: it does not test streaming, tools, follow-up turns, or Codex itself. A failure means the check did not confirm this combination, not that the entire provider lacks support. See [OpenAI's gateway requirements](https://learn.chatgpt.com/docs/enterprise/gateway-compatibility).
+
+To try locally without a key, start `python3 examples/mock_openai_server.py`, then run `llm-doctor --base-url http://127.0.0.1:8765/v1 --model demo-model --no-prompt --responses-only`. The mock is synthetic; it does not test a provider. This feature is in current source, not the v0.6.4 wheel.
+
 ## Quick start
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
