@@ -6,6 +6,12 @@ One local command checks your base URL, model ID, authentication, and first chat
 
 [简体中文](README.zh-CN.md) · [Report a bug](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
+**Agent stopped before using a tool?** [Inspect a non-streaming response in your browser](https://lydiatools.github.io/llm-endpoint-doctor/). Paste a redacted body or try a synthetic example; the page does not call an API or execute functions. [中文](https://lydiatools.github.io/llm-endpoint-doctor/?lang=zh)
+
+[![Actual browser response check showing a synthetic tool call with finish reason stop](docs/assets/tool-call-browser-en.png)](https://lydiatools.github.io/llm-endpoint-doctor/)
+
+*Actual browser result using the built-in synthetic example; no real model or provider was used.*
+
 ## Why this exists
 
 “OpenAI-compatible” can still mean a wrong base URL, a retired model ID, a provider-specific auth rule, or an endpoint that accepts chat but not streaming. LLM Endpoint Doctor gives you a small, repeatable check before those details become a debugging session inside your app.

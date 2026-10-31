@@ -6,6 +6,12 @@
 
 [English README](README.md) · [反馈问题](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
+**Agent 还没调用工具就停下了？** [在网页检查非流式响应](https://lydiatools.github.io/llm-endpoint-doctor/?lang=zh)。粘贴脱敏后的正文或试用模拟示例；页面不调用 API，也不执行函数。[English](https://lydiatools.github.io/llm-endpoint-doctor/)
+
+[![真实网页检查结果：虚构工具调用与 stop 结束状态](docs/assets/tool-call-browser-zh.png)](https://lydiatools.github.io/llm-endpoint-doctor/?lang=zh)
+
+*真实网页截图，使用内置的虚构示例；未使用真实模型或服务商。*
+
 想检查更广的接口目录？[在本机模拟场景中比较 Am I OpenAI Compatible?](docs/probe-comparison.zh-CN.md)。
 
 **聊天接口正常，Agent 需要的接口也能用吗？** 在源码目录运行 `python3 examples/chat_responses_gap.py`：本地虚构服务接受聊天，却对 `/responses` 返回 404；工具会分别报告结果。只发送两次本机请求，不使用密钥或真实模型。本机回环请求直连，远程接口仍使用已配置的代理。文本检查通过也不代表 Agent 已完全兼容。
