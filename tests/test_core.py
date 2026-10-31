@@ -10,12 +10,15 @@ import threading
 import unittest
 import zlib
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta, timezone
+from email.message import Message
+from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
 from llm_endpoint_doctor.cli import main
-from llm_endpoint_doctor.core import _request_stream, normalize_base_url, run_diagnostics
+from llm_endpoint_doctor.core import _request_stream, _retry_after_seconds, normalize_base_url, run_diagnostics
 
 
 class StreamMetadataUnitTests(unittest.TestCase):
@@ -61,6 +64,7 @@ class StreamMetadataUnitTests(unittest.TestCase):
 class _State:
     requests: list[dict[str, object]] = []
     status_code = 200
+    retry_headers: list[str] = []
     redirect_to = ""
     redirect_status = 307
     redirected_authorization: str | None = None
@@ -96,6 +100,9 @@ class _Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        if status in (429, 503):
+            for value in _State.retry_headers:
+                self.send_header("Retry-After", value)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -202,6 +209,7 @@ class CoreTests(unittest.TestCase):
     def setUp(self) -> None:
         _State.requests = []
         _State.status_code = 200
+        _State.retry_headers = []
         _State.redirect_to = ""
         _State.redirect_status = 307
         _State.redirected_authorization = None
@@ -240,6 +248,52 @@ class CoreTests(unittest.TestCase):
             normalize_base_url("https://api.example.com/v1/chat/completions")
         with self.assertRaises(ValueError):
             normalize_base_url("https://api.example.com/\nv1")
+
+    def test_retry_after_on_429_and_503_for_chat_and_stream_without_retry(self) -> None:
+        for status in (429, 503):
+            with self.subTest(status=status):
+                _State.requests = []
+                _State.status_code = status
+                _State.retry_headers = ["45"]
+                report = run_diagnostics(self.base_url, "fixture-model", "top-secret-test-key", check_streaming=True)
+                self.assertEqual(len(_State.requests), 2)  # One chat + explicitly requested stream; no retries.
+                for check in report.checks:
+                    self.assertIn("waiting 45 seconds", check.detail)
+                    self.assertIn("no retry was attempted", check.detail)
+                serialized = json.dumps(report.to_dict())
+                self.assertNotIn("top-secret-test-key", serialized)
+                self.assertNotIn("sensitive-provider-error-body", serialized)
+
+    def test_retry_after_dates_are_bounded_and_untrusted_values_omitted(self) -> None:
+        headers = Message()
+        headers.add_header("Retry-After", format_datetime(datetime.now(timezone.utc) + timedelta(seconds=30), usegmt=True))
+        self.assertIn(_retry_after_seconds(headers), range(28, 31))
+        for values in (["private-token"], ["999999999999999999999"], ["20", "30"], ["1,2"], []):
+            with self.subTest(values=values):
+                headers = Message()
+                for value in values:
+                    headers.add_header("Retry-After", value)
+                self.assertIsNone(_retry_after_seconds(headers))
+        _State.status_code = 429
+        _State.retry_headers = ["private-token"]
+        report = run_diagnostics(self.base_url, "fixture-model", "secret")
+        self.assertEqual(len(_State.requests), 1)
+        self.assertNotIn("private-token", json.dumps(report.to_dict()))
+        self.assertNotIn("Retry-After", report.checks[0].detail)
+
+    def test_cli_reports_retry_after_in_text_and_json_without_response_body(self) -> None:
+        _State.status_code = 503
+        _State.retry_headers = ["12"]
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = Path(directory) / "report.json"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--base-url", self.base_url, "--model", "fixture-model", "--no-prompt", "--json-report", str(report_path)])
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(len(_State.requests), 1)
+            for text in (output.getvalue(), report_path.read_text(encoding="utf-8")):
+                self.assertIn("waiting 12 seconds", text)
+                self.assertNotIn("sensitive-provider-error-body", text)
 
     def test_default_check_sends_one_generation_and_sanitizes_report(self) -> None:
         report = run_diagnostics(self.base_url, " fixture-model ", "top-secret-test-key")

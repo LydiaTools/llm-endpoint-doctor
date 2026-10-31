@@ -24,14 +24,14 @@
 
 需要 Python 3.9 或更新版本，无第三方运行依赖。
 
-想直接安装预构建包？下载 [v0.6.3 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.3/llm_endpoint_doctor-0.6.3-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.3/llm_endpoint_doctor-0.6.3-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
+想直接安装预构建包？下载 [v0.6.4 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.4/llm_endpoint_doctor-0.6.4-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.6.4/llm_endpoint_doctor-0.6.4-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
 
 在下载文件所在目录执行，无需克隆仓库：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.3-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.6.4-py3-none-any.whl
 llm-doctor --version
 ```
 
@@ -195,6 +195,7 @@ CI 中可以从环境变量读取 Key，避免把它放进命令行参数：
 - **图片生成（可选）：** 使用 `--check-image-generation --image-model ID` 时，向 `/images/generations` 额外发送一次固定提示词，检查是否返回非空 `data[].b64_json` 或 HTTP(S) `data[].url`。不会抓取 URL、解码或保存图片字节，也不评价图片质量。
 - **看图输入（可选）：** 使用 `--check-vision-input` 时，额外发送一次含内置合成 PNG data URL 的聊天请求，并检查回复是否匹配四个颜色象限；不匹配时保持未确认。这不是视觉质量评测。
 - **常见故障：** 区分鉴权/权限错误、接口或模型不存在、速率限制、服务错误、超时和 TLS 错误，不输出服务商的原始错误正文。
+- **等待提示：** v0.6.4 和当前源码在 HTTP 429 或 503 返回有效 `Retry-After` 时显示有限范围内的建议等待秒数，不自动重试；HTTP 日期格式依赖本机时钟。较早的 v0.6.3 wheel 尚不包含此提示。
 
 当单行 JSON 事件的 `choices` 为 null 或空数组，且 `error_type` 和 `error_message` 均为非空字符串时，也会提示流内错误。这项对照基于[公开问题](https://github.com/NousResearch/hermes-agent/issues/65631)描述的字段构造合成事件，并非捕获的原始响应或真实服务商测试。工具不会打印服务商的错误消息。
 

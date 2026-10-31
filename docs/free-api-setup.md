@@ -2,7 +2,7 @@
 
 [Project](../README.md) · [简体中文](free-api-setup.zh-CN.md)
 
-**Choose the provider, copy its exact model ID, then check it before adding it to your app.** Start with the direct request below, or install the [v0.6.3 wheel or current source](../README.md#quick-start) for the `llm-doctor` checks. The wheel includes these output controls; the local mock example at the end uses files from the source repository.
+**Choose the provider, copy its exact model ID, then check it before adding it to your app.** Start with the direct request below, or install the [v0.6.4 wheel or current source](../README.md#quick-start) for the `llm-doctor` checks. The wheel includes these output controls; the local mock example at the end uses files from the source repository.
 
 Official documentation reviewed on **2026-10-21 (Asia/Shanghai)**. Provider recipes are documentation-checked; no live provider account or key was used to validate them. The local reproduction below is a synthetic fixture.
 
@@ -81,7 +81,10 @@ Enter the site key at the hidden prompt. I checked the public setup page on 2026
 | HTTP 401/403 | Check that the key, provider route, model and account access belong together. |
 | HTTP 404 | Recheck the whole base URL and the current model ID. |
 | HTTP 429 | Inspect the provider's account quota and limits; the doctor does not retry. |
+| HTTP 503 | Check the provider's status and account access; it may be temporary service unavailability, not necessarily an exhausted quota. |
 | `finish_reason=length` | The generation was truncated. Review the output/context budget; reasoning may consume tokens before an answer. Explicitly choose a different cap if appropriate. |
+
+For 429 or 503, v0.6.4 and current source show an unambiguous `Retry-After` of up to 86,400 seconds when present. HTTP-date values are converted using your local clock; invalid, duplicate or larger values are omitted. A hint is not a guarantee of availability. The tool never retries automatically, though each explicitly selected optional check sends its own request. The older v0.6.3 wheel does not contain this hint.
 
 `--max-output-tokens` accepts 1–8192. `--token-field` sends exactly one of `max_tokens` or `max_completion_tokens`; it does not infer a field from the model name. Defaults are 12 tokens for chat, 24 for JSON or vision, and 128 for tool-calling checks. A larger cap can use more of a provider's quota or incur cost on a paid route. No automatic budget increase or retry occurs.
 
