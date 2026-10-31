@@ -295,6 +295,15 @@ class CoreTests(unittest.TestCase):
                 self.assertIn("waiting 12 seconds", text)
                 self.assertNotIn("sensitive-provider-error-body", text)
 
+    def test_loopback_chat_and_stream_bypass_proxy(self) -> None:
+        proxy = "http://127.0.0.1:9"
+        env = {"http_proxy": proxy, "https_proxy": proxy, "HTTP_PROXY": proxy, "HTTPS_PROXY": proxy, "no_proxy": "", "NO_PROXY": ""}
+        with patch.dict(os.environ, env):
+            report = run_diagnostics(self.base_url, "fixture-model", check_streaming=True)
+        self.assertTrue(report.chat_ready)
+        self.assertEqual(next(c.status for c in report.checks if c.name == "streaming"), "pass")
+        self.assertEqual(len(_State.requests), 2)
+
     def test_default_check_sends_one_generation_and_sanitizes_report(self) -> None:
         report = run_diagnostics(self.base_url, " fixture-model ", "top-secret-test-key")
         self.assertTrue(report.chat_ready)
