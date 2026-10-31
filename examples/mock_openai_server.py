@@ -15,6 +15,7 @@ MAX_BODY_BYTES = 1_000_000
 class MockOpenAIHandler(BaseHTTPRequestHandler):
     server_version = "LLMEndpointDoctorDemo/1.0"
     minimum_output_tokens = 0
+    reject_tools = False
 
     def log_message(self, *_: Any) -> None:
         # Do not print request headers, keys, or request bodies.
@@ -91,6 +92,9 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             return
 
         if request.get("tools"):
+            if self.reject_tools:
+                self._send_json({"error": {"message": "Synthetic tool rejection"}}, 400)
+                return
             self._send_json({
                 "id": "chatcmpl-local-tool-demo",
                 "object": "chat.completion",
@@ -160,18 +164,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Start a local mock OpenAI-compatible endpoint.")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port (default: 8765)")
     parser.add_argument("--simulate-token-limit", action="store_true", help="Synthetic length-ended response below 64 output tokens; no real model")
+    parser.add_argument("--reject-tools", action="store_true", help="Synthetic chat succeeds while tool requests return HTTP 400; no real model")
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
 
     try:
         MockOpenAIHandler.minimum_output_tokens = 64 if args.simulate_token_limit else 0
+        MockOpenAIHandler.reject_tools = args.reject_tools
         server = ThreadingHTTPServer(("127.0.0.1", args.port), MockOpenAIHandler)
     except OSError as exc:
         parser.error(f"could not listen on 127.0.0.1:{args.port}: {exc}")
     print(f"Local demo endpoint ready at http://127.0.0.1:{args.port}/v1 (Ctrl+C to stop)")
     if args.simulate_token_limit:
         print("Synthetic token-limit mode: caps below 64 return finish_reason=length; no real model is running.")
+    if args.reject_tools:
+        print("Synthetic tool-rejection mode: ordinary chat succeeds, tool requests return HTTP 400; no real model is running.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

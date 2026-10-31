@@ -14,6 +14,8 @@
 
 **正在接入免费档模型？** [从一条直接请求和三家接入指南开始](docs/free-api-setup.zh-CN.md)：包含 Groq、Gemini、OpenRouter 的地址、模型选择入口和可复制检查。[English guide](docs/free-api-setup.md)。
 
+**聊天正常，Agent 还需要工具调用？** [先用无需密钥的例子区分两种结果](docs/chat-vs-tools.zh-CN.md)，再检查自己的兼容路由器。
+
 **准备启动 Agent 循环？** [先核对计费项目和请求次数](docs/api-cost-preflight.zh-CN.md)：包含 Gemini 当前支出上限入口、报表延迟，以及默认和可选检查的无需 Key 实测请求数。
 
 ## 快速开始

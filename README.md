@@ -14,6 +14,8 @@ It complements provider directories: directories help you find an endpoint; this
 
 **Connecting a free-tier model?** [Start with a direct cURL request and three provider recipes](docs/free-api-setup.md) for Groq, Gemini and OpenRouter. The guide includes base URLs, model-selection links and copyable checks. [中文接入指南](docs/free-api-setup.zh-CN.md).
 
+**Chat works but your agent needs tool calls?** [Try a keyless chat-vs-tools example](docs/chat-vs-tools.md), then check your own compatible router.
+
 **Starting an agent loop?** [Check the billing project and count requests first](docs/api-cost-preflight.md): Gemini's current spend-cap path, its reporting delay, and keyless request counts for the default and optional checks.
 
 ## Quick start
