@@ -6,9 +6,11 @@ import threading
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import patch
+from urllib.request import ProxyHandler
 
 from llm_endpoint_doctor.cli import main
-from llm_endpoint_doctor.core import run_diagnostics
+from llm_endpoint_doctor.core import _opener_for, run_diagnostics
 
 
 class State:
@@ -100,6 +102,22 @@ class ResponsesTests(unittest.TestCase):
         self.assertIn('Codex compatibility were not checked', output.getvalue())
         self.assertEqual(State.requests[0][1]['max_output_tokens'], 256)
         self.assertNotIn('private-fixture-text', output.getvalue())
+
+    def test_loopback_demo_bypasses_a_configured_proxy(self):
+        proxy = 'http://127.0.0.1:9'
+        env = {'http_proxy': proxy, 'https_proxy': proxy, 'HTTP_PROXY': proxy, 'HTTPS_PROXY': proxy, 'no_proxy': '', 'NO_PROXY': ''}
+        with patch.dict('os.environ', env):
+            report = run_diagnostics(self.url, 'demo', responses_only=True)
+        self.assertTrue(report.responses_text_ready)
+        self.assertEqual(len(State.requests), 1)
+
+    def test_remote_opener_retains_configured_proxy(self):
+        proxy = 'http://127.0.0.1:9'
+        with patch.dict('os.environ', {'https_proxy': proxy, 'HTTPS_PROXY': proxy}):
+            opener = _opener_for('https://gateway.example/v1')
+        handlers = [handler for handler in opener.handlers if isinstance(handler, ProxyHandler)]
+        self.assertEqual(len(handlers), 1)
+        self.assertEqual(handlers[0].proxies.get('https'), proxy)
 
     def test_conflicting_options_fail_before_network(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

@@ -16,7 +16,7 @@ from http.client import HTTPResponse
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit, urlunsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from . import __version__
 
@@ -242,6 +242,13 @@ def _error_detail(status_code: int | None, transport_error: str | None, retry_af
     return "Could not reach the endpoint. Check the host, network, and provider status."
 
 
+def _opener_for(base_url: str) -> Any:
+    parsed = urlsplit(base_url)
+    # Loopback is a local endpoint: never forward its credentials through a proxy.
+    proxy = ProxyHandler({}) if _is_loopback(parsed.hostname or "") else ProxyHandler()
+    return build_opener(proxy, _SameOriginRedirectHandler(_origin_key(parsed)))
+
+
 def _request_json(
     base_url: str,
     path: str,
@@ -251,9 +258,7 @@ def _request_json(
     max_response_bytes: int = _MAX_JSON_RESPONSE_BYTES,
     capture_route: bool = False,
 ) -> _Response:
-    parsed = urlsplit(base_url)
-    origin = _origin_key(parsed)
-    opener = build_opener(_SameOriginRedirectHandler(origin))
+    opener = _opener_for(base_url)
     data = json.dumps(body).encode("utf-8") if body is not None else None
     headers = {"Accept": "application/json"}
     if data is not None:
@@ -490,9 +495,7 @@ def _tool_call_is_valid(payload: Any) -> bool:
 def _request_stream(
     base_url: str, api_key: str, body: dict[str, Any], timeout: float
 ) -> _Response:
-    parsed = urlsplit(base_url)
-    origin = _origin_key(parsed)
-    opener = build_opener(_SameOriginRedirectHandler(origin))
+    opener = _opener_for(base_url)
     headers = {"Accept": "text/event-stream", "Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
