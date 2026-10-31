@@ -12,6 +12,8 @@ One local command checks your base URL, model ID, authentication, and first chat
 
 It complements provider directories: directories help you find an endpoint; this tool checks the endpoint you plan to use.
 
+Need a wider endpoint catalog? [Compare a local example with Am I OpenAI Compatible?](docs/probe-comparison.md)
+
 **Chat works, but will your Agent's API route work too?** Run `python3 examples/chat_responses_gap.py` from a source checkout. An original local mock accepts chat but returns 404 for `/responses`; the doctor reports each result separately. Two loopback requests, no key or real model. Loopback requests connect directly; remote requests use configured proxy settings. A passing text check alone does not prove agent compatibility.
 
 ```text
