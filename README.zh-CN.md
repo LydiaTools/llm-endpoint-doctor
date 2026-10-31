@@ -18,7 +18,7 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id --respons
 
 它只向 `/responses` 发送一次请求，默认隐藏输入 API Key，也支持 `--api-key-env NAME` 或无密钥时使用 `--no-prompt`。请求可能消耗免费额度或产生费用。`--max-output-tokens` 设置输出上限，默认 128。本检查只确认非流式文本返回，不测试流式输出、工具调用、连续对话或 Codex 实际接入；失败只表示本次未确认。参考 [OpenAI 官方网关要求](https://learn.chatgpt.com/docs/enterprise/gateway-compatibility)。
 
-无需密钥试用：在源码目录先运行 `python3 examples/mock_openai_server.py`，再运行 `llm-doctor --base-url http://127.0.0.1:8765/v1 --model demo-model --no-prompt --responses-only`。这是合成模拟服务，不代表真实供应商。v0.7.0 安装包包含 Responses 文本检查，模拟服务在源码目录中。
+无需密钥试用：在源码目录先运行 `python3 examples/mock_openai_server.py`，再运行 `llm-doctor --base-url http://127.0.0.1:8765/v1 --model demo-model --no-prompt --responses-only`。这是合成模拟服务，不代表真实供应商。v0.7.1 安装包包含 Responses 文本检查，模拟服务在源码目录中。
 
 ## 为什么做这个工具
 
@@ -38,14 +38,14 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id --respons
 
 需要 Python 3.9 或更新版本，无第三方运行依赖。
 
-想直接安装预构建包？下载 [v0.7.0 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.0/llm_endpoint_doctor-0.7.0-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.0/llm_endpoint_doctor-0.7.0-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
+想直接安装预构建包？下载 [v0.7.1 Alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.1/llm_endpoint_doctor-0.7.1-py3-none-any.whl)，并使用随包提供的 [SHA-256 文件](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.1/llm_endpoint_doctor-0.7.1-py3-none-any.whl.sha256)核对。当前版本为 Alpha 预览。
 
 在下载文件所在目录执行，无需克隆仓库：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.7.0-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.7.1-py3-none-any.whl
 llm-doctor --version
 ```
 
