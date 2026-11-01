@@ -4,7 +4,7 @@
 
 One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, tool calling, vision input, or a separate image-generation model only when you need them.
 
-[简体中文](README.zh-CN.md) · [Report a bug](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
+[简体中文](README.zh-CN.md) · [Free API setup](docs/free-api-setup.md) · [Report a bug](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
 **Agent stopped before using a tool?** [Inspect a non-streaming response in your browser](https://lydiatools.github.io/llm-endpoint-doctor/). Paste a redacted body or try a synthetic example; the page does not call an API or execute functions. [中文](https://lydiatools.github.io/llm-endpoint-doctor/?lang=zh)
 
@@ -20,7 +20,15 @@ It complements provider directories: directories help you find an endpoint; this
 
 Need a wider endpoint catalog? [Compare a local example with Am I OpenAI Compatible?](docs/probe-comparison.md)
 
-**Chat works, but will your Agent's API route work too?** Run `python3 examples/chat_responses_gap.py` from a source checkout. An original local mock accepts chat but returns 404 for `/responses`; the doctor reports each result separately. Two loopback requests, no key or real model. Loopback requests connect directly; remote requests use configured proxy settings. A passing text check alone does not prove agent compatibility.
+**Chat works, but will your Agent's API route work too?** Try a local mock that accepts chat but returns 404 for `/responses`; the doctor reports each result separately. With Git and Python 3.9 or newer:
+
+```bash
+git clone https://github.com/LydiaTools/llm-endpoint-doctor.git
+cd llm-endpoint-doctor
+python3 examples/chat_responses_gap.py
+```
+
+After the clone, the example sends two loopback requests, with no key or real model. Loopback requests connect directly; remote requests use configured proxy settings. A passing text check alone does not prove agent compatibility.
 
 ```text
 Synthetic local gateway: chat available; Responses returns HTTP 404
