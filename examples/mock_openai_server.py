@@ -108,6 +108,9 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             if self.reject_tools:
                 self._send_json({"error": {"message": "Synthetic tool rejection"}}, 400)
                 return
+            if request.get("stream") is True:
+                self._send_tool_stream()
+                return
             self._send_json({
                 "id": "chatcmpl-local-tool-demo",
                 "object": "chat.completion",
@@ -168,6 +171,33 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_tool_stream(self) -> None:
+        events = [
+            {"choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0,
+                "id": "call_local_probe",
+                "type": "function",
+                "function": {"name": "endpoint_doctor_probe", "arguments": ""},
+            }]}, "finish_reason": None}]},
+            {"choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0,
+                "function": {"arguments": "{\"status\":\"ok\"}"},
+            }]}, "finish_reason": None}]},
+            {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]},
+        ]
+        body = b"".join(
+            ("data: " + json.dumps(event, separators=(",", ":")) + "\n\n").encode("utf-8")
+            for event in events
+        ) + b"data: [DONE]\n\n"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        if self.split_routes and hasattr(self, "demo_route"):
+            self.send_header("X-Routed-Via", self.demo_route)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

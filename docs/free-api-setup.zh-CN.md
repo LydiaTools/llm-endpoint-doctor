@@ -86,7 +86,7 @@ llm-doctor --base-url https://chinagenai.com/v1 --model free --max-output-tokens
 
 对于 429 或 503，v0.6.4 和当前源码会显示单个有效 `Retry-After` 中不超过 86,400 秒的等待提示。HTTP 日期格式使用本机时钟换算；无效、重复或超出范围的值不显示。提示不保证等待后一定可用。工具不会自动重试，但每个明确选择的可选检查都会各自发送请求。较早的 v0.6.3 wheel 尚不包含此提示。
 
-`--max-output-tokens`范围1–8192；`--token-field`只发送`max_tokens`或`max_completion_tokens`中的一个，不按模型名猜测。默认普通聊天12 token、JSON和看图检查24 token、工具调用检查128 token。更高上限可能多消耗额度，付费路由可能收费；工具不会自动加预算或重试。
+`--max-output-tokens`范围1–8192；`--token-field`只发送`max_tokens`或`max_completion_tokens`中的一个，不按模型名猜测。默认普通聊天12 token、JSON和看图检查24 token、工具调用检查（含流式工具调用）128 token。更高上限可能多消耗额度，付费路由可能收费；工具不会自动加预算或重试。
 
 ## 不用Key复现输出预算问题
 

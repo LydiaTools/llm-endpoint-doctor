@@ -1,8 +1,8 @@
 # LLM Endpoint Doctor
 
-**Check chat, tool calling, vision input, and image generation before you wire an OpenAI-compatible API into your app.**
+**Check chat, streamed tool calls, vision input, and image generation before you wire an OpenAI-compatible API into your app.**
 
-One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, tool calling, vision input, or a separate image-generation model only when you need them.
+One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, non-streamed or streamed tool calling, vision input, or a separate image-generation model only when you need them.
 
 [简体中文](README.zh-CN.md) · [Free API setup](docs/free-api-setup.md) · [Report a bug](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
@@ -86,7 +86,7 @@ llm-doctor --base-url https://api.example.com/v1 --model your-model-id
 
 The API key is requested through a hidden terminal prompt. Press Enter for a keyless endpoint. The default run sends **one** chat-completion request.
 
-The default output cap is deliberately small: 12 tokens for ordinary chat, 24 for JSON or vision, and 128 for tool calling. For a reasoning model, select a budget explicitly, for example `--max-output-tokens 1024`. If your provider requires the newer field, also use `--token-field max_completion_tokens`. Both apply to every selected generation check; neither adds a retry or a request. A response ending with `finish_reason=length` is reported as truncated, even if it includes text, valid JSON, usage or an SSE `[DONE]` marker. [Keyless, reproducible example](docs/free-api-setup.md#reproduce-the-output-budget-case-without-a-key).
+The default output cap is deliberately small: 12 tokens for ordinary chat, 24 for JSON or vision, and 128 for tool-calling checks, including streamed tool calling. For a reasoning model, select a budget explicitly, for example `--max-output-tokens 1024`. If your provider requires the newer field, also use `--token-field max_completion_tokens`. Both apply to every selected generation check; neither adds a retry or a request. A response ending with `finish_reason=length` is reported as truncated, even if it includes text, valid JSON, usage or an SSE `[DONE]` marker. [Keyless, reproducible example](docs/free-api-setup.md#reproduce-the-output-budget-case-without-a-key).
 
 ```text
 LLM Endpoint Doctor
@@ -122,6 +122,7 @@ llm-doctor \
   --image-model demo-image-model \
   --check-vision-input \
   --check-tool-calling \
+  --check-tool-streaming \
   --vision-model demo-vision-model
 ```
 
@@ -134,6 +135,7 @@ llm-doctor \
 [PASS] image generation — Returned an image result in base64 or HTTP(S) URL form; the media was not downloaded or saved.
 [PASS] vision input — The response matched the built-in color sequence.
 [PASS] tool calling — Returned one valid function call with the expected argument shape. The function was not executed.
+[PASS] streamed tool calling — SSE completed and assembled one expected function call. The function was not executed.
 
 Basic chat: READY
 ```
@@ -148,7 +150,7 @@ Replay a small protocol example before changing models. In a current source chec
 python3 examples/replay_tool_stream.py
 ```
 
-It accepts call metadata sent only in the first delta and keeps interleaved arguments with the right call. It rejects missing complete-call identity, unfinished JSON and a turn ended by the output limit—even when that turn's argument JSON is valid. A labeled counterexample shows why requiring the name and ID in every delta rejects a valid stream.
+It accepts call metadata sent only in the first delta and keeps interleaved arguments with the right call. It rejects missing complete-call identity, unfinished JSON and a turn ended by the output limit—even when that turn's argument JSON is valid. A labeled counterexample shows why requiring the name and ID in every delta rejects a valid stream. To check one real endpoint, use `--check-tool-streaming` below; the local replay does not contact a provider.
 
 You can also inspect one local capture with `--file capture.sse`; output contains only acceptance, a fixed reason and the call count. No tool is executed. [Actual controls, output and bilingual troubleshooting guide](docs/tool-stream-replay.md). The optional `--check-tool-calling` probe below separately checks a live endpoint's returned function-call shape; it does not execute that function or test streamed tool-call handling.
 
@@ -158,7 +160,7 @@ You can also inspect one local capture with `--file capture.sse`; output contain
 
 ## Optional checks
 
-Each selected check adds one request. Streaming, stream-options, JSON mode, tool calling, image generation, and vision input each send one additional generation request; the model catalog check adds one GET.
+Each selected check adds one request. Streaming, stream-options, JSON mode, tool calling, streamed tool calling, image generation, and vision input each send one additional generation request; the model catalog check adds one GET.
 
 ```bash
 llm-doctor \
@@ -169,6 +171,7 @@ llm-doctor \
   --check-stream-options \
   --check-json-mode \
   --check-tool-calling \
+  --check-tool-streaming \
   --json-report endpoint-report.json
 ```
 
@@ -197,6 +200,10 @@ A pass means the response matched the expected clockwise color sequence. A respo
 Run `llm-doctor --check-tool-calling` to send one extra `POST /chat/completions` with a single required function definition. The check passes only when the endpoint returns one `tool_calls` result with the expected function name and valid JSON arguments. The function is never executed. This confirms one response shape for the selected model; it is not a semantic tool-use benchmark or a guarantee that every schema, prompt, stream consumer, or future request will work. The request can use provider quota or incur a charge.
 
 **The function appeared, but the agent stopped?** Some responses include a tool call while reporting `finish_reason: stop`. Version 0.7.2 flags this combination separately: the call is present, but a client may treat the turn as complete. Try `python3 examples/tool_finish_reason.py` from the source checkout for two synthetic local responses; no key or real provider is used. This warning is included in the v0.7.2 wheel. See the reported [OmniRoute issue](https://github.com/cheaper-inference/OmniRoute/issues/18270) for an example of why the distinction can matter; the tool does not reproduce or test OmniRoute itself.
+
+## Check streamed tool calling
+
+Run `llm-doctor --check-tool-streaming` to send one extra `POST /chat/completions` with `stream: true` and a required function. The check assembles tool-call IDs, names and argument fragments across SSE events, then verifies one completed call with the expected arguments. The function is never executed. This is a smoke check for one selected model and endpoint; it cannot establish that a particular Agent SDK will consume the same stream correctly. The request can use provider quota or incur a charge. The bundled local mock endpoint supports this option, so you can try the command without a provider key first.
 
 ## Non-interactive and CI use
 
@@ -229,12 +236,13 @@ If the named environment variable is missing or empty, the command stops before 
 - **Image generation (optional):** With `--check-image-generation --image-model ID`, sends one additional fixed-prompt request to `/images/generations` and checks for a non-empty `data[].b64_json` or HTTP(S) `data[].url` result. It does not fetch URL results, decode or save image bytes, or judge image quality.
 - **Vision input (optional):** With `--check-vision-input`, sends one additional chat request with a built-in synthetic PNG data URL. It checks the response against four expected color quadrants; a mismatch stays unconfirmed. This is not a vision-quality benchmark.
 - **Tool calling (optional):** With `--check-tool-calling`, sends one additional chat request with a fixed function schema. It checks for one function call with the expected name and JSON arguments; it never executes the function and does not grade semantic reliability.
+- **Streamed tool calling (optional):** With `--check-tool-streaming`, sends one additional chat request with `stream: true` and a required function. It assembles the call across SSE events and checks the completed name and JSON arguments. It never executes the function or verifies a specific Agent SDK.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
 - **Retry timing:** For HTTP 429 or 503, v0.6.4 and current source show a valid `Retry-After` as a bounded wait in seconds. It never retries automatically; HTTP-date values depend on the local clock. The older v0.6.3 wheel does not include this hint.
 
 For a single-line JSON event with null or empty `choices`, nonempty `error_type` and `error_message` fields are also reported as a stream error. This control uses a synthetic event based on fields described in [a public issue](https://github.com/NousResearch/hermes-agent/issues/65631); it is not a captured wire response or a live provider test. Provider messages are not printed.
 
-These optional checks report their own warnings. The CLI exit code still follows basic chat readiness, so a successful chat can exit 0 alongside a streaming warning; inspect the individual check or JSON report. This is a bounded single-line SSE check, not a full streaming-client compatibility test.
+These optional checks report their own warnings. The CLI exit code still follows basic chat readiness, so a successful chat can exit 0 alongside a streaming warning; inspect the individual check or JSON report. The ordinary `--check-streaming` probe is a bounded single-line SSE check; `--check-tool-streaming` assembles a bounded tool-call stream. Neither is a full streaming-client compatibility test.
 
 The tool makes no automatic retries. It does not grade answer quality, benchmark providers, guarantee compatibility with every client, or determine whether a provider's free tier will remain available.
 
@@ -249,6 +257,7 @@ The tool makes no automatic retries. It does not grade answer quality, benchmark
 - The image check sends its fixed prompt to the endpoint and may incur image-generation charges. It requests one image and does not save the returned image; oversized responses are not parsed.
 - The vision check sends one built-in synthetic image to the endpoint and may incur provider charges. The image is generated in memory and is not saved. It makes no repeated or follow-up requests.
 - The tool-calling check sends one fixed function schema and prompt to the endpoint. It does not execute the returned function or save the response, and it makes no repeated or follow-up request.
+- The streamed tool-calling check sends one fixed function schema and prompt with `stream: true`. It assembles the SSE response in memory, does not execute the returned function or save the response, and makes no repeated or follow-up request.
 
 ## Development
 

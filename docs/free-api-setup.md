@@ -86,7 +86,7 @@ Enter the site key at the hidden prompt. I checked the public setup page on 2026
 
 For 429 or 503, v0.6.4 and current source show an unambiguous `Retry-After` of up to 86,400 seconds when present. HTTP-date values are converted using your local clock; invalid, duplicate or larger values are omitted. A hint is not a guarantee of availability. The tool never retries automatically, though each explicitly selected optional check sends its own request. The older v0.6.3 wheel does not contain this hint.
 
-`--max-output-tokens` accepts 1–8192. `--token-field` sends exactly one of `max_tokens` or `max_completion_tokens`; it does not infer a field from the model name. Defaults are 12 tokens for chat, 24 for JSON or vision, and 128 for tool-calling checks. A larger cap can use more of a provider's quota or incur cost on a paid route. No automatic budget increase or retry occurs.
+`--max-output-tokens` accepts 1–8192. `--token-field` sends exactly one of `max_tokens` or `max_completion_tokens`; it does not infer a field from the model name. Defaults are 12 tokens for chat, 24 for JSON or vision, and 128 for tool-calling checks, including streamed tool calling. A larger cap can use more of a provider's quota or incur cost on a paid route. No automatic budget increase or retry occurs.
 
 ## Reproduce the output-budget case without a key
 

@@ -47,6 +47,16 @@ This bounded example accepts one choice at index `0`, up to eight indexed functi
 
 It is not a full SSE/API validator, a schema/permission checker, a model benchmark, a Responses API decoder or a live provider compatibility test. The optional `llm-doctor --check-tool-calling` probe checks a separate non-streaming provider response shape; it does not test this SSE assembly path. This supplementary example ships in current source. All examples are independently authored under MIT; no upstream implementation or captured user traffic is included.
 
+## Check one live endpoint
+
+To send one real request, install the current source and run:
+
+```sh
+llm-doctor --base-url https://api.example.com/v1 --model your-model-id --check-tool-streaming
+```
+
+This adds one `POST /chat/completions` with `stream: true` and a required function. The checker assembles the bounded SSE response and validates one expected function call. It does not execute the function, retain the response, retry, or prove compatibility with a particular Agent SDK. The provider receives the request and may count or charge it. Use the bundled local mock endpoint first if you want a keyless walkthrough.
+
 ## 中文
 
 普通聊天成功，只证明那一条请求能通。流式工具调用还依赖客户端正确组装增量：`index` 标记所属调用，ID、名称和类型可能只在首块出现。缺少后续重复元数据，不等于完整调用缺字段。
@@ -54,3 +64,13 @@ It is not a full SSE/API validator, a schema/permission checker, a model benchma
 运行上面的单条命令，可离线检查六组合成对照。前两组应接受，后四组应拒绝；全部符合明确预期，程序才返回成功。另一个故意错误的逐块校验规则会拒绝正常首组，帮助定位客户端误判。它没有运行或修复上游 SDK。
 
 `--file capture.sse` 可读本机捕获，只打印判断、固定原因、调用数量；不会上传文件、打印参数或执行工具。该有限示例不评判模型工具调用能力，不把引擎、模板和客户端协议问题混为一谈。可选的 `llm-doctor --check-tool-calling` 会单独检查非流式 Provider 响应结构，不检查这里的 SSE 组装路径。
+
+### 检查一次真实接口
+
+安装当前源码后，可向指定接口发送一次流式工具调用请求：
+
+```sh
+llm-doctor --base-url https://api.example.com/v1 --model your-model-id --check-tool-streaming
+```
+
+这会额外发送一次带 `stream: true` 和必选函数的 `POST /chat/completions`。工具在内存中组装有数量与大小上限的 SSE 响应，并校验一条预期函数调用；不会执行函数、保留响应或自动重试，也不能证明某个 Agent SDK 兼容。服务商会收到请求，可能计入额度或收费。想先无 Key 体验，可用仓库自带的本地模拟服务。
