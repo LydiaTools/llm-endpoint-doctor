@@ -1,8 +1,8 @@
 # LLM Endpoint Doctor
 
-**Check chat, tool calling, vision input, and image generation before you wire an OpenAI-compatible API into your app.**
+**Check chat, streamed tool calls, vision input, and image generation before you wire an OpenAI-compatible API into your app.**
 
-One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, tool calling, vision input, or a separate image-generation model only when you need them.
+One local command checks your base URL, model ID, authentication, and first chat response. Add optional checks for the model catalog, streaming, JSON mode, tool calling, streamed tool calls, vision input, or a separate image-generation model only when you need them.
 
 [简体中文](README.zh-CN.md) · [Free API setup](docs/free-api-setup.md) · [Report a bug](https://github.com/LydiaTools/llm-endpoint-doctor/issues)
 
@@ -60,14 +60,14 @@ To try locally without a key, from a source checkout start `python3 examples/moc
 
 Requires Python 3.9 or later. No third-party runtime dependencies.
 
-Prefer a prebuilt package? Download the [v0.7.2 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.2/llm_endpoint_doctor-0.7.2-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.2/llm_endpoint_doctor-0.7.2-py3-none-any.whl.sha256). This is an alpha preview.
+Prefer a prebuilt package? Download the [v0.7.3 alpha wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.3/llm_endpoint_doctor-0.7.3-py3-none-any.whl) and verify it with the accompanying [SHA-256 file](https://github.com/LydiaTools/llm-endpoint-doctor/releases/download/v0.7.3/llm_endpoint_doctor-0.7.3-py3-none-any.whl.sha256). This is an alpha preview.
 
 From the folder containing the downloaded wheel, install it without cloning the repository:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.7.2-py3-none-any.whl
+python -m pip install --no-index --no-deps ./llm_endpoint_doctor-0.7.3-py3-none-any.whl
 llm-doctor --version
 ```
 
@@ -122,6 +122,7 @@ llm-doctor \
   --image-model demo-image-model \
   --check-vision-input \
   --check-tool-calling \
+  --check-tool-streaming \
   --vision-model demo-vision-model
 ```
 
@@ -134,6 +135,7 @@ llm-doctor \
 [PASS] image generation — Returned an image result in base64 or HTTP(S) URL form; the media was not downloaded or saved.
 [PASS] vision input — The response matched the built-in color sequence.
 [PASS] tool calling — Returned one valid function call with the expected argument shape. The function was not executed.
+[PASS] streamed tool calling — SSE completed and assembled one expected function call. The function was not executed.
 
 Basic chat: READY
 ```
@@ -150,7 +152,15 @@ python3 examples/replay_tool_stream.py
 
 It accepts call metadata sent only in the first delta and keeps interleaved arguments with the right call. It rejects missing complete-call identity, unfinished JSON and a turn ended by the output limit—even when that turn's argument JSON is valid. A labeled counterexample shows why requiring the name and ID in every delta rejects a valid stream.
 
-You can also inspect one local capture with `--file capture.sse`; output contains only acceptance, a fixed reason and the call count. No tool is executed. [Actual controls, output and bilingual troubleshooting guide](docs/tool-stream-replay.md). The optional `--check-tool-calling` probe below separately checks a live endpoint's returned function-call shape; it does not execute that function or test streamed tool-call handling.
+You can also inspect one local capture with `--file capture.sse`; output contains only acceptance, a fixed reason and the call count. No tool is executed. [Actual controls, output and bilingual troubleshooting guide](docs/tool-stream-replay.md).
+
+For one live endpoint check, use `--check-tool-streaming`:
+
+```bash
+llm-doctor --base-url https://api.example.com/v1 --model your-model-id --check-tool-streaming
+```
+
+This sends one extra streamed function-call request, assembles its SSE deltas, and checks one expected call. The function is never executed and the response body is not printed. The selected provider may count or charge the request. This is one protocol smoke check, not a model benchmark or proof that a specific agent SDK will accept the stream. The v0.7.3 alpha wheel includes this check.
 
 ![Six original offline tool-stream controls, shown in the actual public guide.](docs/assets/tool-stream-replay.png)
 
@@ -158,7 +168,7 @@ You can also inspect one local capture with `--file capture.sse`; output contain
 
 ## Optional checks
 
-Each selected check adds one request. Streaming, stream-options, JSON mode, tool calling, image generation, and vision input each send one additional generation request; the model catalog check adds one GET.
+Each selected check adds one request. Streaming, stream-options, JSON mode, tool calling, streamed tool calling, image generation, and vision input each send one additional generation request; the model catalog check adds one GET.
 
 ```bash
 llm-doctor \
@@ -196,6 +206,10 @@ A pass means the response matched the expected clockwise color sequence. A respo
 
 Run `llm-doctor --check-tool-calling` to send one extra `POST /chat/completions` with a single required function definition. The check passes only when the endpoint returns one `tool_calls` result with the expected function name and valid JSON arguments. The function is never executed. This confirms one response shape for the selected model; it is not a semantic tool-use benchmark or a guarantee that every schema, prompt, stream consumer, or future request will work. The request can use provider quota or incur a charge.
 
+## Check streamed tool calling
+
+Run `llm-doctor --check-tool-streaming` to send one extra `POST /chat/completions` with `stream: true` and a required function. The doctor assembles the returned SSE fragments and checks one completed call with the expected name and arguments. The function is never executed, and the response content is not printed or saved. The request can use provider quota or incur a charge. A pass confirms only this response from the selected model and endpoint; it does not benchmark semantic accuracy or prove compatibility with a particular agent SDK, router, or later request. No automatic retry is made.
+
 **The function appeared, but the agent stopped?** Some responses include a tool call while reporting `finish_reason: stop`. Version 0.7.2 flags this combination separately: the call is present, but a client may treat the turn as complete. Try `python3 examples/tool_finish_reason.py` from the source checkout for two synthetic local responses; no key or real provider is used. This warning is included in the v0.7.2 wheel. See the reported [OmniRoute issue](https://github.com/cheaper-inference/OmniRoute/issues/18270) for an example of why the distinction can matter; the tool does not reproduce or test OmniRoute itself.
 
 ## Non-interactive and CI use
@@ -229,6 +243,7 @@ If the named environment variable is missing or empty, the command stops before 
 - **Image generation (optional):** With `--check-image-generation --image-model ID`, sends one additional fixed-prompt request to `/images/generations` and checks for a non-empty `data[].b64_json` or HTTP(S) `data[].url` result. It does not fetch URL results, decode or save image bytes, or judge image quality.
 - **Vision input (optional):** With `--check-vision-input`, sends one additional chat request with a built-in synthetic PNG data URL. It checks the response against four expected color quadrants; a mismatch stays unconfirmed. This is not a vision-quality benchmark.
 - **Tool calling (optional):** With `--check-tool-calling`, sends one additional chat request with a fixed function schema. It checks for one function call with the expected name and JSON arguments; it never executes the function and does not grade semantic reliability.
+- **Streamed tool calling (optional):** With `--check-tool-streaming`, sends one additional streamed chat request with a fixed function schema. It checks whether one complete call can be assembled from SSE deltas; it never executes the function, prints response content, or retries automatically.
 - **Common failures:** Separates authentication/access errors, missing endpoints or models, rate limits, server errors, timeouts, and TLS failures without printing provider error bodies.
 - **Retry timing:** For HTTP 429 or 503, v0.6.4 and current source show a valid `Retry-After` as a bounded wait in seconds. It never retries automatically; HTTP-date values depend on the local clock. The older v0.6.3 wheel does not include this hint.
 
