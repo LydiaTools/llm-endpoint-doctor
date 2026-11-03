@@ -15,7 +15,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-doctor",
         description="Check OpenAI-compatible chat and optional model capabilities.",
-        epilog="The default run sends one chat request. Responses-only sends one Responses request instead. Each selected chat check sends one extra request. Tool-calling, vision and image checks send provider requests and may incur charges or use free-tier quota.",
+        epilog="The default run sends one chat request. Responses-only sends one Responses request instead. Each selected chat check sends one extra request. Tool-calling, streamed tool-calling, vision and image checks send provider requests and may incur charges or use free-tier quota.",
     )
     parser.add_argument("--base-url", required=True, help="API base URL, such as https://api.example.com/v1")
     parser.add_argument("--model", required=True, help="Exact model ID or provider alias to test")
@@ -32,6 +32,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-vision-input", action="store_true", help="Also send one chat request with a built-in synthetic PNG; may incur provider charges")
     parser.add_argument("--vision-model", help="Model ID for the vision check (default: --model); only with --check-vision-input")
     parser.add_argument("--check-tool-calling", action="store_true", help="Also send one function-calling request and validate its returned structure; the function is never executed")
+    parser.add_argument("--check-tool-streaming", action="store_true", help="Also send one streamed function-calling request and validate the assembled call; the function is never executed")
     parser.add_argument("--compare-route-headers", action="store_true", help="Compare X-Routed-Via headers for chat and tool responses without printing values; requires --check-tool-calling")
     key_group = parser.add_mutually_exclusive_group()
     key_group.add_argument("--api-key-env", metavar="NAME", help="Read the API key from an environment variable")
@@ -66,7 +67,7 @@ def _print_report(report: DiagnosticReport) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    if args.responses_only and (args.token_field is not None or any((args.check_model_list, args.check_streaming, args.check_stream_options, args.check_json_mode, args.check_image_generation, args.image_model, args.check_vision_input, args.vision_model, args.check_tool_calling, args.compare_route_headers))):
+    if args.responses_only and (args.token_field is not None or any((args.check_model_list, args.check_streaming, args.check_stream_options, args.check_json_mode, args.check_image_generation, args.image_model, args.check_vision_input, args.vision_model, args.check_tool_calling, args.check_tool_streaming, args.compare_route_headers))):
         parser.error("--responses-only cannot be combined with chat-specific checks, models, or --token-field")
     if args.compare_route_headers and not args.check_tool_calling:
         parser.error("--compare-route-headers requires --check-tool-calling")
@@ -130,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
             check_vision_input=args.check_vision_input,
             vision_model=args.vision_model,
             check_tool_calling=args.check_tool_calling,
+            check_tool_streaming=args.check_tool_streaming,
             compare_route_headers=args.compare_route_headers,
         )
     except (EOFError, KeyboardInterrupt):

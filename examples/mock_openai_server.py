@@ -108,6 +108,9 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
             if self.reject_tools:
                 self._send_json({"error": {"message": "Synthetic tool rejection"}}, 400)
                 return
+            if request.get("stream") is True:
+                self._send_tool_stream(model)
+                return
             self._send_json({
                 "id": "chatcmpl-local-tool-demo",
                 "object": "chat.completion",
@@ -171,6 +174,28 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_tool_stream(self, model: str) -> None:
+        chunks = [
+            {"id": "chatcmpl-local-tool-stream", "object": "chat.completion.chunk", "model": model,
+             "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "call_local_probe",
+                 "type": "function", "function": {"name": "endpoint_doctor_probe", "arguments": '{"status":'}}]},
+                 "finish_reason": None}]},
+            {"id": "chatcmpl-local-tool-stream", "object": "chat.completion.chunk", "model": model,
+             "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0,
+                 "function": {"arguments": '"ok"}'}}]}, "finish_reason": None}]},
+            {"id": "chatcmpl-local-tool-stream", "object": "chat.completion.chunk", "model": model,
+             "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]},
+        ]
+        body = "".join("data: " + json.dumps(chunk, separators=(",", ":")) + "\n\n" for chunk in chunks)
+        body += "data: [DONE]\n\n"
+        encoded = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
 
 
 def main() -> int:

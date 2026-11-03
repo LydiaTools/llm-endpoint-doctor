@@ -19,6 +19,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from . import __version__
+from .tool_stream import inspect_tool_stream
 
 _MAX_JSON_RESPONSE_BYTES = 1_000_000
 _MAX_IMAGE_RESPONSE_BYTES = 32_000_000
@@ -75,6 +76,13 @@ class DiagnosticReport:
             return None
         return check.status == "pass"
 
+    @property
+    def tool_streaming_ready(self) -> bool | None:
+        check = next((c for c in self.checks if c.name == "streamed tool calling"), None)
+        if check is None or check.status == "warn":
+            return None
+        return check.status == "pass"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "tool": "llm-endpoint-doctor",
@@ -88,6 +96,7 @@ class DiagnosticReport:
             "vision_model": self.vision_model,
             "vision_input_ready": self.vision_input_ready,
             "tool_calling_ready": self.tool_calling_ready,
+            "tool_streaming_ready": self.tool_streaming_ready,
             "checks": [c.to_dict() for c in self.checks],
         }
 
@@ -437,13 +446,13 @@ def _chat_body(
 
 
 def _tool_call_body(
-    model: str, *, max_output_tokens: int | None = None, token_field: str = "max_tokens"
+    model: str, *, stream: bool = False, max_output_tokens: int | None = None, token_field: str = "max_tokens"
 ) -> dict[str, Any]:
     return {
         "model": model,
         "messages": [{"role": "user", "content": "Call endpoint_doctor_probe now."}],
         token_field: max_output_tokens if max_output_tokens is not None else 128,
-        "stream": False,
+        "stream": stream,
         "tools": [{
             "type": "function",
             "function": {
@@ -568,10 +577,18 @@ def _request_stream(
                 saw_stream_error = True
         if _output_limited(chunk):
             saw_length_limit = True
-    return _Response(status_code, elapsed, retry_after_seconds=retry_after_seconds, payload={
+    payload = {
         "saw_done": saw_done, "saw_usage": saw_usage, "saw_length_limit": saw_length_limit,
         "saw_stream_error": saw_stream_error,
-    })
+    }
+    if body.get("tools"):
+        inspection = inspect_tool_stream(
+            text,
+            expected_name="endpoint_doctor_probe",
+            expected_arguments={"status": "ok"},
+        )
+        payload["tool_call_stream_valid"] = inspection["accepted"]
+    return _Response(status_code, elapsed, retry_after_seconds=retry_after_seconds, payload=payload)
 
 
 def run_diagnostics(
@@ -590,6 +607,7 @@ def run_diagnostics(
     check_vision_input: bool = False,
     vision_model: str | None = None,
     check_tool_calling: bool = False,
+    check_tool_streaming: bool = False,
     compare_route_headers: bool = False,
     responses_only: bool = False,
 ) -> DiagnosticReport:
@@ -632,7 +650,8 @@ def run_diagnostics(
 
     if responses_only:
         if any((check_model_list, check_streaming, check_stream_options, check_json_mode,
-                check_image_generation, check_vision_input, check_tool_calling, compare_route_headers)) or token_field != "max_tokens":
+                check_image_generation, check_vision_input, check_tool_calling, check_tool_streaming,
+                compare_route_headers)) or token_field != "max_tokens":
             raise ValueError("Responses-only mode cannot be combined with chat-specific checks.")
         result = _request_json(normalized, "/responses", api_key, {
             "model": model,
@@ -870,6 +889,48 @@ def run_diagnostics(
             else:
                 detail = "The two X-Routed-Via header values differed; check the router for details."
             checks.append(CheckResult("route header comparison", "info", detail))
+
+    if check_tool_streaming:
+        result = _request_stream(
+            normalized,
+            api_key,
+            _tool_call_body(
+                model,
+                stream=True,
+                max_output_tokens=max_output_tokens,
+                token_field=token_field,
+            ),
+            timeout,
+        )
+        payload = result.payload if isinstance(result.payload, dict) else {}
+        if result.status_code is not None and 200 <= result.status_code < 300 and payload.get("saw_length_limit"):
+            checks.append(CheckResult(
+                "streamed tool calling",
+                "warn",
+                "The response hit the output limit before streamed tool-call compatibility could be confirmed.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300 and payload.get("tool_call_stream_valid"):
+            checks.append(CheckResult(
+                "streamed tool calling",
+                "pass",
+                "SSE completed and assembled one expected function call. The function was not executed.",
+                result.elapsed_ms,
+            ))
+        elif result.status_code is not None and 200 <= result.status_code < 300:
+            checks.append(CheckResult(
+                "streamed tool calling",
+                "warn",
+                "HTTP succeeded, but one complete streamed function call with the expected arguments was not confirmed.",
+                result.elapsed_ms,
+            ))
+        else:
+            checks.append(CheckResult(
+                "streamed tool calling",
+                "warn",
+                _error_detail(result.status_code, result.transport_error, result.retry_after_seconds),
+                result.elapsed_ms,
+            ))
 
     return DiagnosticReport(
         _safe_target(normalized), model, checks,

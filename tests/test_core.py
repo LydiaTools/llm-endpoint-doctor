@@ -90,6 +90,20 @@ class _State:
             },
         }]
     }
+    tool_stream_status = 200
+    tool_stream_chunks: list[dict[str, object]] = []
+
+
+def _tool_stream_chunks(*, include_identity: bool = True) -> list[dict[str, object]]:
+    first_delta: dict[str, object] = {"index": 0, "type": "function", "function": {"arguments": ""}}
+    if include_identity:
+        first_delta["id"] = "call_fixture_probe"
+        first_delta["function"] = {"name": "endpoint_doctor_probe", "arguments": ""}
+    return [
+        {"choices": [{"index": 0, "delta": {"tool_calls": [first_delta]}, "finish_reason": None}]},
+        {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": '{"status":"ok"}'}}]}, "finish_reason": None}]},
+        {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]},
+    ]
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -141,6 +155,19 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(_State.vision_response, _State.vision_status)
             return
         if body.get("tools"):
+            if body.get("stream"):
+                chunks = [
+                    ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+                    for chunk in _State.tool_stream_chunks
+                ]
+                chunks.append(b"data: [DONE]\n\n")
+                stream = b"".join(chunks)
+                self.send_response(_State.tool_stream_status)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(stream)))
+                self.end_headers()
+                self.wfile.write(stream)
+                return
             self._send_json(_State.tool_call_response, _State.tool_call_status)
             return
         if body.get("stream_options") and _State.reject_stream_options:
@@ -235,6 +262,8 @@ class CoreTests(unittest.TestCase):
                 },
             }]
         }
+        _State.tool_stream_status = 200
+        _State.tool_stream_chunks = _tool_stream_chunks()
 
     def test_base_url_normalization_and_rejections(self) -> None:
         self.assertEqual(normalize_base_url(" https://api.example.com/v1/ "), "https://api.example.com/v1")
@@ -372,6 +401,34 @@ class CoreTests(unittest.TestCase):
         self.assertIsNone(report.tool_calling_ready)
         self.assertNotIn("not-ok", json.dumps(report.to_dict()))
         self.assertEqual(len(_State.requests), 2)
+
+    def test_streamed_tool_call_check_assembles_fragments_without_executing_tool(self) -> None:
+        report = run_diagnostics(
+            self.base_url,
+            "fixture-model",
+            api_key="stream-tool-test-key",
+            check_tool_streaming=True,
+        )
+
+        self.assertTrue(report.tool_streaming_ready)
+        self.assertEqual(len(_State.requests), 2)
+        self.assertTrue(_State.requests[1]["body"]["stream"])
+        check = next(item for item in report.checks if item.name == "streamed tool calling")
+        self.assertEqual(check.status, "pass")
+        self.assertIn("function was not executed", check.detail)
+        serialized = json.dumps(report.to_dict())
+        self.assertNotIn("stream-tool-test-key", serialized)
+        self.assertNotIn('{"status":"ok"}', serialized)
+
+    def test_streamed_tool_call_missing_identity_is_not_reported_as_ready(self) -> None:
+        _State.tool_stream_chunks = _tool_stream_chunks(include_identity=False)
+
+        report = run_diagnostics(self.base_url, "fixture-model", check_tool_streaming=True)
+
+        self.assertIsNone(report.tool_streaming_ready)
+        check = next(item for item in report.checks if item.name == "streamed tool calling")
+        self.assertEqual(check.status, "warn")
+        self.assertNotIn("call_fixture_probe", json.dumps(report.to_dict()))
 
     def test_tool_calling_reports_stop_with_expected_call_without_confirming_readiness(self) -> None:
         _State.tool_call_response = {
