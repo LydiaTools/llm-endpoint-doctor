@@ -2,9 +2,9 @@
 
 [项目主页](../README.zh-CN.md) · [English](free-api-setup.md)
 
-**选服务商、复制准确模型ID，再做一次检查。** 可以先直接运行下面的请求；如果需要诊断，再[安装v0.6.4发行包或当前源码](../README.zh-CN.md#快速开始)，使用后面的 `llm-doctor` 命令。文末本地模拟示例另需仓库中的源码文件。
+**选服务商、复制准确模型ID，再做一次检查。** 可以先直接运行下面的请求；如果需要诊断，再[安装v0.7.3预览版](https://github.com/LydiaTools/llm-endpoint-doctor/releases/tag/v0.7.3)或使用[当前源码](../README.zh-CN.md#快速开始)，运行后面的 `llm-doctor` 命令。发行包包含输出预算控制；文末本地模拟示例还需要仓库中的源码文件。
 
-官方文档核对日期：**2026-10-21（Asia/Shanghai）**。本页核对了文档与本地请求流程，没有用真实服务商账号/Key验收三家的在线能力；下方复现是明确的模拟输入。
+服务商文档首次核对于 **2026-10-21（Asia/Shanghai）**；OpenRouter 路由与模型标签于 **2026-10-31** 复核。本页核对了文档与本地请求流程，没有用真实服务商账号/Key验收三家的在线能力；下方复现是明确的模拟输入。
 
 ## 不安装本工具，先发一条请求
 
@@ -32,6 +32,12 @@ unset OPENROUTER_API_KEY
 | [OpenRouter](https://openrouter.ai/docs/quickstart) | `https://openrouter.ai/api/v1` | `openrouter/free`或目录中存在的免费变体 | [免费变体与回退计费](https://openrouter.ai/docs/guides/routing/model-variants/free)、[账号限制](https://openrouter.ai/docs/api_reference/limits) |
 
 运行时在隐藏提示中输入该服务商的Key。本指南不注册账号、开启计费或添加付费回退。能否用免费档、当时有多少容量，以服务商和你的账号为准。
+
+## 确认最终传给服务商的模型名
+
+命令行参数可能覆盖配置文件里的模型名。在[一条 mini-SWE-agent 用户报告](https://github.com/SWE-agent/mini-swe-agent/issues/962)中，YAML写的是`qwen/qwen3.8-27b:free`，命令却又传入了`-m qwen3.8-27b`。SWE-bench说明其`infer`命令会把未识别参数传给mini；mini-swe-agent 2.4.6将`-m` / `--model`作为模型参数，并优先使用该值而非`model.model_name`（[SWE-bench命令文档](https://github.com/SWE-bench/SWE-bench/blob/main/docs/reference/cli.md#swebench-infer-dataset)、[命令行参数](https://github.com/SWE-agent/mini-swe-agent/blob/v2.4.6/src/minisweagent/run/mini.py#L55-L92)、[模型名优先级](https://github.com/SWE-agent/mini-swe-agent/blob/v2.4.6/src/minisweagent/models/__init__.py#L65-L75)）。因此在这套配置里，最终模型名是命令中的`-m`值，而不是YAML里的ID。单凭这条报告不能证明OpenRouter普遍存在计费问题。
+
+如果以配置文件为准，就从命令中移除`-m`；如果以命令为准，就在`-m`后写完整、准确的服务商模型ID。长时间运行前，先查看工具输出中最终解析的模型名，并核对服务商用量页面。
 
 启动 Agent 循环前，先[核对计费项目和请求次数](api-cost-preflight.zh-CN.md)。Gemini 已有带处理延迟的项目支出上限，与本工具每项检查的输出上限分别管理。
 
@@ -84,7 +90,7 @@ llm-doctor --base-url https://chinagenai.com/v1 --model free --max-output-tokens
 | HTTP 503 | 查看服务商状态和账号访问情况；可能是临时服务不可用，不一定是额度耗尽。 |
 | `finish_reason=length` | 生成被截断。检查输出/上下文预算，思考可能先消耗token；需要时手动选择另一预算。 |
 
-对于 429 或 503，v0.6.4 和当前源码会显示单个有效 `Retry-After` 中不超过 86,400 秒的等待提示。HTTP 日期格式使用本机时钟换算；无效、重复或超出范围的值不显示。提示不保证等待后一定可用。工具不会自动重试，但每个明确选择的可选检查都会各自发送请求。较早的 v0.6.3 wheel 尚不包含此提示。
+对于 429 或 503，v0.7.3预览版和当前源码会显示单个有效 `Retry-After` 中不超过 86,400 秒的等待提示。HTTP 日期格式使用本机时钟换算；无效、重复或超出范围的值不显示。提示不保证等待后一定可用。工具不会自动重试，但每个明确选择的可选检查都会各自发送请求。较早的 v0.6.3 wheel 尚不包含此提示。
 
 `--max-output-tokens`范围1–8192；`--token-field`只发送`max_tokens`或`max_completion_tokens`中的一个，不按模型名猜测。默认普通聊天12 token、JSON和看图检查24 token、工具调用检查128 token。更高上限可能多消耗额度，付费路由可能收费；工具不会自动加预算或重试。
 

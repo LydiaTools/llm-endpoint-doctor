@@ -2,9 +2,9 @@
 
 [Project](../README.md) · [简体中文](free-api-setup.zh-CN.md)
 
-**Choose the provider, copy its exact model ID, then check it before adding it to your app.** Start with the direct request below, or install the [v0.6.4 wheel or current source](../README.md#quick-start) for the `llm-doctor` checks. The wheel includes these output controls; the local mock example at the end uses files from the source repository.
+**Choose the provider, copy its exact model ID, then check it before adding it to your app.** Start with the direct request below, or install the [v0.7.3 preview wheel](https://github.com/LydiaTools/llm-endpoint-doctor/releases/tag/v0.7.3) or [current source](../README.md#quick-start) for the `llm-doctor` checks. The wheel includes these output controls; the local mock example at the end uses files from the source repository.
 
-Official documentation reviewed on **2026-10-21 (Asia/Shanghai)**. Provider recipes are documentation-checked; no live provider account or key was used to validate them. The local reproduction below is a synthetic fixture.
+Provider documentation was first reviewed on **2026-10-21 (Asia/Shanghai)**; the OpenRouter route and model label were rechecked on **2026-10-31**. Provider recipes are documentation-checked; no live provider account or key was used to validate them. The local reproduction below is a synthetic fixture.
 
 ## Send one request without installing this tool
 
@@ -32,6 +32,12 @@ The key prompt does not echo your input. Check the returned JSON or HTTP error a
 | [OpenRouter](https://openrouter.ai/docs/quickstart) | `https://openrouter.ai/api/v1` | `openrouter/free`, or a listed free variant | [Free variants and fallback behavior](https://openrouter.ai/docs/guides/routing/model-variants/free) and [account limits](https://openrouter.ai/docs/api_reference/limits) |
 
 You supply the provider's key through the hidden prompt. Nothing in this guide creates an account, enables billing or adds paid fallbacks. Free eligibility and capacity belong to the provider and your account, not to this tool.
+
+## Check which model name actually reaches the provider
+
+A command-line option can take precedence over the model in a config file. In [one mini-SWE-agent report](https://github.com/SWE-agent/mini-swe-agent/issues/962), the YAML named `qwen/qwen3.8-27b:free`, while the command also supplied `-m qwen3.8-27b`. SWE-bench documents that its `infer` wrapper passes unrecognized arguments through to mini; mini-swe-agent 2.4.6 defines `-m` / `--model` as the model option and gives that value precedence over `model.model_name` ([SWE-bench CLI docs](https://github.com/SWE-bench/SWE-bench/blob/main/docs/reference/cli.md#swebench-infer-dataset), [CLI option](https://github.com/SWE-agent/mini-swe-agent/blob/v2.4.6/src/minisweagent/run/mini.py#L55-L92), [model-name precedence](https://github.com/SWE-agent/mini-swe-agent/blob/v2.4.6/src/minisweagent/models/__init__.py#L65-L75)). That makes the command's `-m` value the effective model name for this setup, rather than the ID in YAML. The report alone does not establish a general OpenRouter billing problem.
+
+If the file should control model selection, remove `-m`. If the command should control it, put the exact intended provider model ID after `-m`. Before a longer run, inspect the resolved model in the tool's output and the provider's usage page.
 
 Before starting an agent loop, [check the billing project and request count](api-cost-preflight.md). Gemini now documents project spend caps with reporting delays; this is separate from the doctor's per-check output cap.
 
@@ -84,7 +90,7 @@ Enter the site key at the hidden prompt. I checked the public setup page on 2026
 | HTTP 503 | Check the provider's status and account access; it may be temporary service unavailability, not necessarily an exhausted quota. |
 | `finish_reason=length` | The generation was truncated. Review the output/context budget; reasoning may consume tokens before an answer. Explicitly choose a different cap if appropriate. |
 
-For 429 or 503, v0.6.4 and current source show an unambiguous `Retry-After` of up to 86,400 seconds when present. HTTP-date values are converted using your local clock; invalid, duplicate or larger values are omitted. A hint is not a guarantee of availability. The tool never retries automatically, though each explicitly selected optional check sends its own request. The older v0.6.3 wheel does not contain this hint.
+For 429 or 503, the v0.7.3 preview wheel and current source show an unambiguous `Retry-After` of up to 86,400 seconds when present. HTTP-date values are converted using your local clock; invalid, duplicate or larger values are omitted. A hint is not a guarantee of availability. The tool never retries automatically, though each explicitly selected optional check sends its own request. The older v0.6.3 wheel does not contain this hint.
 
 `--max-output-tokens` accepts 1–8192. `--token-field` sends exactly one of `max_tokens` or `max_completion_tokens`; it does not infer a field from the model name. Defaults are 12 tokens for chat, 24 for JSON or vision, and 128 for tool-calling checks. A larger cap can use more of a provider's quota or incur cost on a paid route. No automatic budget increase or retry occurs.
 
